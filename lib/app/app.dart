@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/theme/app_theme.dart';
 import '../data/app_state.dart';
@@ -34,8 +35,33 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
           themeMode: _state.themeMode,
           initialRoute: Routes.splash,
           onGenerateRoute: Routes.onGenerateRoute,
+          // Baseline system-bar styling for the whole app, so status-bar icons
+          // stay legible against the page background. The few dark screens
+          // (splash, picker, viewer) override this with their own region.
+          builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+            value: _state.isDark ? _darkOverlay : _lightOverlay,
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
       ),
     );
   }
 }
+
+/// Dark glyphs for the light palette's cream background.
+const _lightOverlay = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.dark,
+  statusBarBrightness: Brightness.light,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.dark,
+);
+
+/// Light glyphs for the dark palette.
+const _darkOverlay = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.light,
+);
