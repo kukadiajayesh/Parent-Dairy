@@ -4,14 +4,58 @@ import '../../app/routes.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../core/widgets/toast.dart';
+import '../../data/app_state.dart';
 
-/// Google-only sign-in, matching the design. The button is wired to the child
-/// setup step; drop a real auth call in [_signIn] when the backend lands.
-class LoginPage extends StatelessWidget {
+/// Google-only sign-in, matching the design.
+///
+/// Where the parent lands afterwards depends on the account: a brand-new one
+/// has no child yet and goes to setup, while a reinstall on a new phone already
+/// has children in Firestore and goes straight to the shell (§39).
+class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
-  void _signIn(BuildContext context) =>
-      Navigator.of(context).pushReplacementNamed(Routes.childSetup);
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  bool _busy = false;
+
+  Future<void> _signIn() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    final state = AppScope.read(context);
+    try {
+      await state.signInWithGoogle();
+      if (!mounted) return;
+
+      // The children stream may not have delivered yet. Waiting for it here
+      // keeps the parent on a spinner rather than flashing child setup at
+      // someone who already has three children on another device.
+      final destination = await _resolveDestination(state);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed(destination);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      AppToast.failure(context, error, title: "Couldn't sign in", onRetry: _signIn);
+    }
+  }
+
+  Future<String> _resolveDestination(AppState state) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 6));
+    while (state.authStatus == AuthStatus.unknown &&
+        DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+    // On timeout, assume setup: an empty form is a smaller misstep than a shell
+    // with no child selected.
+    return state.authStatus == AuthStatus.ready
+        ? Routes.shell
+        : Routes.childSetup;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +107,7 @@ class LoginPage extends StatelessWidget {
                   ),
                 ),
               ),
-              _GoogleButton(onPressed: () => _signIn(context)),
+              _GoogleButton(onPressed: _busy ? null : _signIn, busy: _busy),
               const SizedBox(height: 14),
               Wrap(
                 alignment: WrapAlignment.center,
@@ -83,9 +127,10 @@ class LoginPage extends StatelessWidget {
 }
 
 class _GoogleButton extends StatelessWidget {
-  const _GoogleButton({required this.onPressed});
+  const _GoogleButton({required this.onPressed, this.busy = false});
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -105,14 +150,24 @@ class _GoogleButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const _GoogleMark(size: 20),
+              if (busy)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: k.tx3,
+                  ),
+                )
+              else
+                const _GoogleMark(size: 20),
               const SizedBox(width: 12),
               Text(
-                'Continue with Google',
+                busy ? 'Signing in…' : 'Continue with Google',
                 style: TextStyle(
                   fontSize: 15.5,
                   fontWeight: FontWeight.w700,
-                  color: k.tx,
+                  color: busy ? k.tx3 : k.tx,
                 ),
               ),
             ],

@@ -31,6 +31,9 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/android/build/
+/ios/Pods/
+/ios/.symlinks/
 /coverage/
 
 # Symbolication related

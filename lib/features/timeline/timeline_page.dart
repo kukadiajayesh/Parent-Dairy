@@ -77,8 +77,8 @@ class TimelinePage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 120),
               sliver: SliverList.list(
                 children: [
-                  if (state.isOffline) ...[
-                    OfflineBanner(onDismiss: () => state.setOffline(false)),
+                  if (state.showOfflineBanner) ...[
+                    OfflineBanner(onDismiss: state.dismissOfflineBanner),
                     const SizedBox(height: 16),
                   ],
                   const _ScopeChips(),

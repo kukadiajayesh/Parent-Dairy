@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "438761220028",
+    "project_id": "parent-academic-diary",
+    "storage_bucket": "parent-academic-diary.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:438761220028:android:873666ea701ca35af36db9",
+        "android_client_info": {
+          "package_name": "com.parent.academic.diary"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "438761220028-6uujc6gc99f3lknm4v7safij98vkoeui.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.parent.academic.diary",
+            "certificate_hash": "5352c8428ddbfd4cba7e085ab139f28db389732a"
+          }
+        },
+        {
+          "client_id": "438761220028-aa9d2n3gip8e5nbr9lvqits0o47ngolb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-F1EkFX5k7Rid1xgs0yEMdM88gZ-XXxg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "438761220028-aa9d2n3gip8e5nbr9lvqits0o47ngolb.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "438761220028-627fk3r198bn1hqe42tu2ig2gqpnuifd.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.parentdiary.parentAcademicDiary"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

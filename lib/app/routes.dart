@@ -58,7 +58,9 @@ abstract final class Routes {
       case classworkDetail:
         return page(ClassworkDetailPage(recordId: settings.arguments! as String));
       case shareImage:
-        return page(const ShareImagePage());
+        return page(
+          ShareImagePage(args: settings.arguments as ShareImageArgs?),
+        );
       case picker:
         return page(const PickerPage());
       case viewer:

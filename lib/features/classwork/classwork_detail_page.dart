@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
 import '../../core/format.dart';
+import '../../core/services/attachment_actions.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/image_slot.dart';
@@ -37,14 +39,29 @@ class ClassworkDetailPage extends StatelessWidget {
     Future<void> delete() async {
       if (!await confirmDelete(context)) return;
       if (!context.mounted) return;
-      state.deleteRecord(record.id);
+      final messenger = ScaffoldMessenger.of(context);
+      await state.deleteRecord(record.id);
+      if (!context.mounted) return;
       Navigator.of(context).pop();
-      AppToast.show(
+      AppToast.showOn(
+        messenger,
         context,
         title: 'Record deleted',
         description: '${record.title} was removed.',
         kind: ToastKind.warn,
+        // Soft delete (§30) makes Undo a real restore, not a re-create.
+        actionLabel: 'Undo',
+        onAction: () => state.restoreRecord(record.id),
       );
+    }
+
+    Future<void> share() async {
+      try {
+        await AttachmentActions.shareRecord(record);
+      } catch (error) {
+        if (!context.mounted) return;
+        AppToast.failure(context, error, title: "Couldn't share");
+      }
     }
 
     void openViewer(int index) => Navigator.of(context).pushNamed(
@@ -67,7 +84,7 @@ class ClassworkDetailPage extends StatelessWidget {
                 actions: [
                   AppIconButton(
                     tooltip: 'Share',
-                    onTap: () {},
+                    onTap: share,
                     child: StrokeIcon(AppIcons.share, size: 19, color: k.tx2),
                   ),
                   AppIconButton(
@@ -144,7 +161,10 @@ class ClassworkDetailPage extends StatelessWidget {
                     children: [
                       for (var i = 0; i < record.attachments.length; i++)
                         ImageSlot(
-                          placeholder: record.attachments[i].meta,
+                          placeholder: record.attachments[i].isPdf
+                              ? record.attachments[i].name
+                              : record.attachments[i].meta,
+                          image: attachmentImage(record.attachments[i]),
                           radius: 16,
                           onTap: () => openViewer(i),
                         ),

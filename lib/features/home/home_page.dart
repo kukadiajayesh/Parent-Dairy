@@ -12,7 +12,6 @@ import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
-import '../../data/sample_data.dart';
 import '../../shell/shell_scope.dart';
 import '../children/child_switcher_sheet.dart';
 import '../search/search_page.dart';
@@ -21,6 +20,15 @@ import '../worksheet/worksheets_list_page.dart';
 
 /// Home dashboard: greeting, child/year switcher, quick actions, pending
 /// worksheets and recent activity.
+/// Greets by the actual time of day rather than assuming morning — parents
+/// file worksheets after school as often as before it.
+String _greeting() {
+  final hour = DateTime.now().hour;
+  if (hour < 12) return 'Good morning,';
+  if (hour < 17) return 'Good afternoon,';
+  return 'Good evening,';
+}
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -49,7 +57,7 @@ class HomePage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Good morning,',
+                    _greeting(),
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -58,7 +66,7 @@ class HomePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    SampleData.parentName,
+                    state.parentName,
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,

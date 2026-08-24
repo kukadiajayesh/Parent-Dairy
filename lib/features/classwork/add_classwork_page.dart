@@ -4,6 +4,7 @@ import '../../app/routes.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
@@ -12,8 +13,12 @@ import '../../core/widgets/layout.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
+import '../../core/services/image_service.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../../data/repositories/attachment_repository.dart';
+import '../picker/attachment_source_row.dart';
+import '../picker/picker_page.dart';
 
 /// Add / edit classwork: subject, title, date, notes and a photo drop zone.
 class AddClassworkPage extends StatefulWidget {
@@ -31,13 +36,28 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
   late final TextEditingController _notes =
       TextEditingController(text: widget.existing?.notes ?? '');
 
-  late String _subject = widget.existing?.subject ?? 'English';
-  late DateTime _date = widget.existing?.date ?? DateTime(2026, 8, 23);
+  String? _subject;
+
+  /// §37: today by default.
+  late DateTime _date =
+      widget.existing?.date ?? DateUtils.dateOnly(DateTime.now());
   late final List<Attachment> _photos =
       List.of(widget.existing?.attachments ?? const []);
 
+  bool _saving = false;
+
   bool get _isEditing => widget.existing != null;
-  bool get _canSave => _title.text.trim().isNotEmpty;
+  bool get _canSave =>
+      !_saving && _title.text.trim().isNotEmpty && _subject != null;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_subject != null) return;
+    final state = AppScope.of(context);
+    final suggested = widget.existing?.subject ?? state.suggestedSubject;
+    if (suggested.isNotEmpty) _subject = suggested;
+  }
 
   @override
   void dispose() {
@@ -46,44 +66,65 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
     super.dispose();
   }
 
-  Future<void> _addPhotos() async {
-    final added = await Navigator.of(context).pushNamed<int>(Routes.picker);
-    if (added == null || added == 0) return;
+  Future<void> _addPhotos([AttachmentSource source = AttachmentSource.camera]) async {
+    final picked = await Navigator.of(context).push<List<PickedAttachment>>(
+      MaterialPageRoute(
+        builder: (_) => PickerPage(initialSource: source),
+        settings: const RouteSettings(name: Routes.picker),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+
     setState(() {
-      for (var i = 0; i < added; i++) {
+      for (final file in picked) {
         _photos.add(
-          Attachment(
-            name: 'classwork-${_photos.length + 1}.jpg',
-            meta: 'Photo ${_photos.length + 1}',
+          AttachmentRepository.stage(
+            file,
+            caption: 'Photo ${_photos.length + 1}',
           ),
         );
       }
     });
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (!_canSave) return;
+    setState(() => _saving = true);
+
     final state = AppScope.read(context);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final subject = _subject!;
+
     final record = DiaryRecord(
-      id: widget.existing?.id ??
-          'cw-${DateTime.now().microsecondsSinceEpoch}',
+      id: widget.existing?.id ?? '',
+      childId: widget.existing?.childId ?? '',
+      academicYearId: widget.existing?.academicYearId ?? state.activeYear,
       type: RecordType.classwork,
-      subject: _subject,
+      subject: subject,
       title: _title.text.trim(),
       date: _date,
       notes: _notes.text.trim(),
       attachments: _photos,
+      createdAt: widget.existing?.createdAt,
     );
 
-    if (_isEditing) state.deleteRecord(record.id);
-    state.addRecord(record);
-
-    Navigator.of(context).pop();
-    AppToast.show(
-      context,
-      title: _isEditing ? 'Classwork updated' : 'Classwork saved',
-      description: '${AppFormat.photoCount(_photos.length)} added to '
-          '$_subject classwork.',
-    );
+    try {
+      await state.saveRecord(record);
+      if (!mounted) return;
+      navigator.pop();
+      AppToast.showOn(
+        messenger,
+        context,
+        title: _isEditing ? 'Classwork updated' : 'Classwork saved',
+        description: '${AppFormat.photoCount(_photos.length)} added to '
+            '$subject classwork.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppToast.failure(context, error, title: "Couldn't save classwork");
+    }
   }
 
   @override
@@ -153,7 +194,10 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                     minHeight: 66,
                   ),
                   const SizedBox(height: 18),
-                  _PhotoDropZone(onPick: _addPhotos),
+                  _PhotoDropZone(
+                    onCamera: () => _addPhotos(AttachmentSource.camera),
+                    onGallery: () => _addPhotos(AttachmentSource.gallery),
+                  ),
                   if (_photos.isNotEmpty) ...[
                     const SizedBox(height: 18),
                     GridView.count(
@@ -168,7 +212,10 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                             fit: StackFit.expand,
                             children: [
                               ImageSlot(
-                                placeholder: '${i + 1}',
+                                placeholder: _photos[i].isPdf
+                                    ? 'PDF'
+                                    : '${i + 1}',
+                                image: attachmentImage(_photos[i]),
                                 radius: 14,
                               ),
                               Positioned(
@@ -202,7 +249,9 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
             ),
             StickyFooter(
               child: AppFilledButton(
-                label: _isEditing ? 'Save Changes' : 'Save Classwork',
+                label: _saving
+                    ? 'Saving…'
+                    : (_isEditing ? 'Save Changes' : 'Save Classwork'),
                 onPressed: _canSave ? _save : null,
               ),
             ),
@@ -214,9 +263,10 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
 }
 
 class _PhotoDropZone extends StatelessWidget {
-  const _PhotoDropZone({required this.onPick});
+  const _PhotoDropZone({required this.onCamera, required this.onGallery});
 
-  final VoidCallback onPick;
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
 
   @override
   Widget build(BuildContext context) {
@@ -255,7 +305,7 @@ class _PhotoDropZone extends StatelessWidget {
                   elevated: false,
                   color: k.secFill,
                   hoverColor: k.secFillH,
-                  onPressed: onPick,
+                  onPressed: onCamera,
                 ),
               ),
               const SizedBox(width: 10),
@@ -268,7 +318,7 @@ class _PhotoDropZone extends StatelessWidget {
                   background: k.secC,
                   hoverBackground: k.secCH,
                   foreground: k.secInk,
-                  onPressed: onPick,
+                  onPressed: onGallery,
                 ),
               ),
             ],

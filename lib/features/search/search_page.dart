@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
@@ -8,6 +10,7 @@ import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
 
@@ -24,6 +27,14 @@ class _SearchPageState extends State<SearchPage> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focus = FocusNode();
 
+  Timer? _debounce;
+  List<DiaryRecord> _results = const [];
+  bool _searching = false;
+  bool _allYears = false;
+
+  /// Guards against an earlier, slower query overwriting a later one.
+  int _requestId = 0;
+
   @override
   void initState() {
     super.initState();
@@ -32,20 +43,51 @@ class _SearchPageState extends State<SearchPage> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
   }
 
-  List<DiaryRecord> _match(List<DiaryRecord> source) {
-    final query = _controller.text.trim().toLowerCase();
-    if (query.isEmpty) return const [];
-    return source
-        .where((r) =>
-            r.title.toLowerCase().contains(query) ||
-            r.subject.toLowerCase().contains(query) ||
-            r.notes.toLowerCase().contains(query))
-        .toList();
+  void _onQueryChanged() {
+    setState(() {});
+    _debounce?.cancel();
+    // A Firestore read per keystroke would be both slow and expensive.
+    _debounce = Timer(const Duration(milliseconds: 320), _run);
+  }
+
+  Future<void> _run() async {
+    final query = _controller.text.trim();
+    if (query.isEmpty) {
+      setState(() {
+        _results = const [];
+        _searching = false;
+      });
+      return;
+    }
+
+    final id = ++_requestId;
+    setState(() => _searching = true);
+
+    try {
+      final found = await AppScope.read(
+        context,
+      ).search(query, allYears: _allYears);
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _results = found;
+        _searching = false;
+      });
+    } catch (error) {
+      if (!mounted || id != _requestId) return;
+      setState(() => _searching = false);
+      AppToast.failure(context, error, title: "Couldn't search", onRetry: _run);
+    }
+  }
+
+  void _toggleAllYears(bool value) {
+    setState(() => _allYears = value);
+    _run();
   }
 
   @override
@@ -53,8 +95,10 @@ class _SearchPageState extends State<SearchPage> {
     final k = context.t;
     final state = AppScope.of(context);
     final hasQuery = _controller.text.trim().isNotEmpty;
-    final worksheets = _match(state.worksheets);
-    final classwork = _match(state.classwork);
+    final worksheets =
+        _results.where((r) => r.type == RecordType.worksheet).toList();
+    final classwork =
+        _results.where((r) => r.type == RecordType.classwork).toList();
 
     return Scaffold(
       backgroundColor: k.bg,
@@ -86,7 +130,8 @@ class _SearchPageState extends State<SearchPage> {
                             child: TextField(
                               controller: _controller,
                               focusNode: _focus,
-                              onChanged: (_) => setState(() {}),
+                              onChanged: (_) => _onQueryChanged(),
+                              onSubmitted: (_) => _run(),
                               textInputAction: TextInputAction.search,
                               style: TextStyle(
                                 fontSize: 14.5,
@@ -109,7 +154,7 @@ class _SearchPageState extends State<SearchPage> {
                             InkWell(
                               onTap: () {
                                 _controller.clear();
-                                setState(() {});
+                                _onQueryChanged();
                               },
                               customBorder: const CircleBorder(),
                               child: Padding(
@@ -144,6 +189,38 @@ class _SearchPageState extends State<SearchPage> {
                 ],
               ),
             ),
+            // §15: search defaults to the active year, with one tap to widen
+            // it to the whole archive.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: Row(
+                children: [
+                  AppChip(
+                    label: state.activeYear,
+                    selected: !_allYears,
+                    fontSize: 12.5,
+                    onTap: () => _toggleAllYears(false),
+                  ),
+                  const SizedBox(width: 8),
+                  AppChip(
+                    label: 'All years',
+                    selected: _allYears,
+                    fontSize: 12.5,
+                    onTap: () => _toggleAllYears(true),
+                  ),
+                  const Spacer(),
+                  if (_searching)
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: k.tx4,
+                      ),
+                    ),
+                ],
+              ),
+            ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 120),
@@ -151,13 +228,13 @@ class _SearchPageState extends State<SearchPage> {
                   _ResultGroup(
                     label: 'Worksheets',
                     records: worksheets,
-                    showEmpty: hasQuery,
+                    showEmpty: hasQuery && !_searching,
                   ),
                   const SizedBox(height: 18),
                   _ResultGroup(
                     label: 'Classwork',
                     records: classwork,
-                    showEmpty: hasQuery,
+                    showEmpty: hasQuery && !_searching,
                   ),
                   // The design adds an "Exams · n" group behind showExamMarks.
                   if (!hasQuery) ...[

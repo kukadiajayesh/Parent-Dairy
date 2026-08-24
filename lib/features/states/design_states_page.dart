@@ -237,9 +237,16 @@ class _DashboardSkeleton extends StatelessWidget {
         const SizedBox(height: 14),
         const SkeletonBox(height: 76, radius: 20),
         const SizedBox(height: 14),
+        // Stands in for the home screen's pending-worksheet strip, which
+        // scrolls horizontally. Two 190dp cards plus their gap are wider than
+        // any phone, so a plain Row overflows on every device — this clips the
+        // second card at the edge exactly as the real strip does.
         SizedBox(
           height: 112,
-          child: Row(
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            // A loading placeholder should not be draggable.
+            physics: const NeverScrollableScrollPhysics(),
             children: const [
               SkeletonBox(width: 190, height: 112, radius: 18),
               SizedBox(width: 12),

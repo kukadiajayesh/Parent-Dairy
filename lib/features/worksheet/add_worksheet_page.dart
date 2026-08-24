@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
 import '../../core/format.dart';
+import '../../core/services/image_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/buttons.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
 import '../../core/widgets/image_slot.dart';
@@ -14,7 +16,9 @@ import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../../data/repositories/attachment_repository.dart';
 import '../picker/attachment_source_row.dart';
+import '../picker/picker_page.dart';
 
 /// Add / edit a worksheet: subject, title, dates, notes, attachments, answer
 /// key and status.
@@ -33,17 +37,33 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
   late final TextEditingController _notes =
       TextEditingController(text: widget.existing?.notes ?? '');
 
-  late String _subject = widget.existing?.subject ?? 'Mathematics';
-  late DateTime _date = widget.existing?.date ?? DateTime(2026, 8, 23);
-  late DateTime? _dueDate = widget.existing?.dueDate ?? DateTime(2026, 8, 28);
+  String? _subject;
+
+  /// §37: today, not a fixed sample date — a parent recording a worksheet is
+  /// almost always recording today's.
+  late DateTime _date = widget.existing?.date ?? DateUtils.dateOnly(DateTime.now());
+  late DateTime? _dueDate = widget.existing?.dueDate;
   late WorksheetStatus _status =
       widget.existing?.status ?? WorksheetStatus.pending;
   late final List<Attachment> _attachments =
       List.of(widget.existing?.attachments ?? const []);
   late Attachment? _answerKey = widget.existing?.answerKey;
 
+  bool _saving = false;
+
   bool get _isEditing => widget.existing != null;
-  bool get _canSave => _title.text.trim().isNotEmpty;
+  bool get _canSave =>
+      !_saving && _title.text.trim().isNotEmpty && _subject != null;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Pre-selects the last subject used (§11), once subjects have loaded.
+    if (_subject != null) return;
+    final state = AppScope.of(context);
+    final suggested = widget.existing?.subject ?? state.suggestedSubject;
+    if (suggested.isNotEmpty) _subject = suggested;
+  }
 
   @override
   void dispose() {
@@ -70,28 +90,61 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
     });
   }
 
-  Future<void> _addAttachment() async {
-    final added = await Navigator.of(context).pushNamed<int>(Routes.picker);
-    if (added == null || added == 0) return;
+  Future<void> _addAttachment([AttachmentSource? source]) async {
+    final picked = await Navigator.of(context).push<List<PickedAttachment>>(
+      MaterialPageRoute(
+        builder: (_) => PickerPage(initialSource: source),
+        settings: const RouteSettings(name: Routes.picker),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+
     setState(() {
-      for (var i = 0; i < added; i++) {
+      for (final file in picked) {
         _attachments.add(
-          Attachment(
-            name: 'page-${_attachments.length + 1}.jpg',
-            meta: 'Page ${_attachments.length + 1}',
+          AttachmentRepository.stage(
+            file,
+            caption: 'Page ${_attachments.length + 1}',
           ),
         );
       }
     });
   }
 
-  void _save() {
+  Future<void> _addAnswerKey(AttachmentSource source) async {
+    final picked = await Navigator.of(context).push<List<PickedAttachment>>(
+      MaterialPageRoute(
+        builder: (_) =>
+            PickerPage(initialSource: source, allowMultiple: false),
+        settings: const RouteSettings(name: Routes.picker),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+
+    setState(() {
+      _answerKey = AttachmentRepository.stage(
+        picked.first,
+        caption: ImageService.humanSize(picked.first.bytes),
+      );
+    });
+  }
+
+  Future<void> _save() async {
+    if (!_canSave) return;
+    setState(() => _saving = true);
+
     final state = AppScope.read(context);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final subject = _subject!;
+
     final record = DiaryRecord(
-      id: widget.existing?.id ??
-          'ws-${DateTime.now().microsecondsSinceEpoch}',
+      // Empty id means "create"; the repository assigns the Firestore id.
+      id: widget.existing?.id ?? '',
+      childId: widget.existing?.childId ?? '',
+      academicYearId: widget.existing?.academicYearId ?? state.activeYear,
       type: RecordType.worksheet,
-      subject: _subject,
+      subject: subject,
       title: _title.text.trim(),
       date: _date,
       dueDate: _dueDate,
@@ -102,19 +155,26 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
       status: _status,
       attachments: _attachments,
       answerKey: _answerKey,
+      createdAt: widget.existing?.createdAt,
     );
 
-    if (_isEditing) {
-      state.deleteRecord(record.id);
+    try {
+      await state.saveRecord(record);
+      if (!mounted) return;
+      navigator.pop();
+      // Captured before the await: this page is gone by the time the toast
+      // shows, so its own context can no longer resolve a messenger.
+      AppToast.showOn(
+        messenger,
+        context,
+        title: _isEditing ? 'Worksheet updated' : 'Worksheet saved',
+        description: '$subject worksheet added to your timeline.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppToast.failure(context, error, title: "Couldn't save worksheet");
     }
-    state.addRecord(record);
-
-    Navigator.of(context).pop();
-    AppToast.show(
-      context,
-      title: _isEditing ? 'Worksheet updated' : 'Worksheet saved',
-      description: '$_subject worksheet added to your timeline.',
-    );
   }
 
   @override
@@ -219,7 +279,7 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
                   const SizedBox(height: 10),
                   AttachmentSourceRow(
                     emphasizeFirst: true,
-                    onPick: (_) => _addAttachment(),
+                    onPick: _addAttachment,
                   ),
                   const SizedBox(height: 10),
                   _AttachmentGrid(
@@ -250,15 +310,7 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  AttachmentSourceRow(
-                    onPick: (_) => setState(
-                      () => _answerKey = const Attachment(
-                        name: 'answer-key.pdf',
-                        meta: '1 page · 240 KB',
-                        isPdf: true,
-                      ),
-                    ),
-                  ),
+                  AttachmentSourceRow(onPick: _addAnswerKey),
                   if (_answerKey != null) ...[
                     const SizedBox(height: 10),
                     _AnswerKeyRow(
@@ -286,7 +338,9 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
             ),
             StickyFooter(
               child: AppFilledButton(
-                label: _isEditing ? 'Save Changes' : 'Save Worksheet',
+                label: _saving
+                    ? 'Saving…'
+                    : (_isEditing ? 'Save Changes' : 'Save Worksheet'),
                 onPressed: _canSave ? _save : null,
               ),
             ),
@@ -373,7 +427,13 @@ class _AttachmentGrid extends StatelessWidget {
           Stack(
             fit: StackFit.expand,
             children: [
-              ImageSlot(placeholder: attachments[i].meta, radius: 14),
+              ImageSlot(
+                placeholder: attachments[i].isPdf
+                    ? attachments[i].name
+                    : attachments[i].meta,
+                image: attachmentImage(attachments[i]),
+                radius: 14,
+              ),
               Positioned(
                 top: 6,
                 right: 6,
@@ -436,14 +496,24 @@ class _AnswerKeyRow extends StatelessWidget {
               color: k.surf2,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(
-              'PDF',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: k.tx3,
-              ),
-            ),
+            clipBehavior: Clip.antiAlias,
+            child: attachment.isPdf
+                ? Text(
+                    'PDF',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: k.tx3,
+                    ),
+                  )
+                : ImageSlot(
+                    image: attachmentImage(attachment),
+                    placeholder: '',
+                    showCaption: false,
+                    radius: 12,
+                    width: 52,
+                    height: 52,
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(

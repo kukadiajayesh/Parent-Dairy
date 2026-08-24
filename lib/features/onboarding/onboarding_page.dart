@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
 import '../../core/config/feature_flags.dart';
+import '../../core/services/prefs_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/buttons.dart';
@@ -53,8 +56,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
     }
   }
 
-  void _goToLogin() =>
-      Navigator.of(context).pushReplacementNamed(Routes.login);
+  /// Recorded so a returning parent who signs out lands on Login rather than
+  /// being walked through the tour again.
+  void _goToLogin() {
+    unawaited(PrefsService.instance.setOnboarded(true));
+    Navigator.of(context).pushReplacementNamed(Routes.login);
+  }
 
   @override
   Widget build(BuildContext context) {

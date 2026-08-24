@@ -8,6 +8,7 @@ import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/sheets.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 
 /// Manage Children: one card per child with edit and delete actions.
@@ -100,13 +101,50 @@ class ChildrenPage extends StatelessWidget {
                                 background: k.errC,
                                 hoverBackground: k.errCH,
                                 foreground: k.err,
-                                onTap: () => confirmDelete(
-                                  context,
-                                  title: 'Delete ${child.name}?',
-                                  description:
-                                      'Every record saved for ${child.name} '
-                                      'will be removed from your diary.',
-                                ),
+                                onTap: () async {
+                                  // The app has nowhere to send a parent with
+                                  // no children, so the last one stays.
+                                  if (state.children.length <= 1) {
+                                    AppToast.show(
+                                      context,
+                                      title: "Can't remove the last child",
+                                      description:
+                                          'Add another child first, then '
+                                          'remove this one.',
+                                      kind: ToastKind.warn,
+                                      actionLabel: 'OK',
+                                    );
+                                    return;
+                                  }
+                                  final confirmed = await confirmDelete(
+                                    context,
+                                    title: 'Delete ${child.name}?',
+                                    description:
+                                        'Their records are hidden from your '
+                                        'diary but stay recoverable.',
+                                  );
+                                  if (!confirmed || !context.mounted) return;
+                                  try {
+                                    await state.deleteChild(child.id);
+                                    if (!context.mounted) return;
+                                    AppToast.show(
+                                      context,
+                                      title: 'Child removed',
+                                      description:
+                                          '${child.name} was removed from '
+                                          'your diary.',
+                                      kind: ToastKind.warn,
+                                      actionLabel: 'OK',
+                                    );
+                                  } catch (error) {
+                                    if (!context.mounted) return;
+                                    AppToast.failure(
+                                      context,
+                                      error,
+                                      title: "Couldn't remove child",
+                                    );
+                                  }
+                                },
                               ),
                             ],
                           ),

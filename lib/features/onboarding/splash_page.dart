@@ -2,14 +2,70 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/routes.dart';
+import '../../core/services/prefs_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../data/app_state.dart';
 
-/// Brand splash on the primary fill. Tapping anywhere continues, matching the
-/// design's "Tap to continue" affordance.
-class SplashPage extends StatelessWidget {
+/// Brand splash on the primary fill — and the app's auth gate.
+///
+/// It holds the first frame only as long as Firebase takes to say whether a
+/// session was restored, then routes: onboarding for a first run, login for a
+/// returning parent who signed out, child setup for an account with no child,
+/// and straight to the shell for everyone else. The design's "Tap to continue"
+/// still works and skips the wait.
+class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
+
+  @override
+  State<SplashPage> createState() => _SplashPageState();
+}
+
+class _SplashPageState extends State<SplashPage> {
+  AppState? _state;
+  bool _navigated = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = AppScope.of(context);
+    if (identical(state, _state)) return;
+    _state?.removeListener(_maybeRoute);
+    _state = state..addListener(_maybeRoute);
+    _maybeRoute();
+  }
+
+  @override
+  void dispose() {
+    _state?.removeListener(_maybeRoute);
+    super.dispose();
+  }
+
+  void _maybeRoute() {
+    final status = _state?.authStatus;
+    if (status == null || status == AuthStatus.unknown) return;
+    _go(status);
+  }
+
+  /// Tapping before auth resolves takes the first-run path; a session that
+  /// resolves later is handled by [_maybeRoute] anyway.
+  void _onTap() => _go(_state?.authStatus ?? AuthStatus.signedOut);
+
+  void _go(AuthStatus status) {
+    if (_navigated || !mounted) return;
+    if (status == AuthStatus.unknown) return;
+    _navigated = true;
+
+    final route = switch (status) {
+      AuthStatus.ready => Routes.shell,
+      AuthStatus.needsChild => Routes.childSetup,
+      _ => PrefsService.instance.hasOnboarded
+          ? Routes.login
+          : Routes.onboarding,
+    };
+    Navigator.of(context).pushReplacementNamed(route);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,8 +79,7 @@ class SplashPage extends StatelessWidget {
         backgroundColor: k.priFill,
         body: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () =>
-              Navigator.of(context).pushReplacementNamed(Routes.onboarding),
+          onTap: _onTap,
           child: SafeArea(
             child: Stack(
               children: [

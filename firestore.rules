@@ -1,0 +1,90 @@
+rules_version = '2';
+
+// Parent Academic Diary — Firestore security rules (§29).
+//
+// Model: every document lives under `users/{uid}`, and a parent may only ever
+// touch their own subtree. There are no shared documents, no teacher role and
+// no cross-account reads, so the whole policy reduces to one ownership check
+// applied at every level.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isNonEmptyString(value, maxLength) {
+      return value is string && value.size() > 0 && value.size() <= maxLength;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      // The profile is written on every sign-in; the uid in the body must
+      // match the path so a document cannot claim another account.
+      allow create, update: if isOwner(uid)
+                            && request.resource.data.uid == uid;
+      // Account deletion is an administrative action, not a client one.
+      allow delete: if false;
+
+      match /academicYears/{yearId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+                              && isNonEmptyString(request.resource.data.label, 40)
+                              && request.resource.data.records is int;
+        allow delete: if isOwner(uid);
+      }
+
+      match /children/{childId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+                              && isNonEmptyString(request.resource.data.name, 120);
+        // Children are soft-deleted (§30) by setting isDeleted, never removed.
+        allow delete: if false;
+
+        match /subjects/{subjectId} {
+          allow read: if isOwner(uid);
+          allow create, update: if isOwner(uid)
+                                && isNonEmptyString(request.resource.data.name, 60)
+                                && request.resource.data.order is int;
+          allow delete: if isOwner(uid);
+        }
+
+        match /records/{recordId} {
+          allow read: if isOwner(uid);
+
+          allow create, update: if isOwner(uid)
+                                && isValidRecord()
+                                // A record must admit which child it belongs
+                                // to, and it must be this one.
+                                && request.resource.data.childId == childId;
+
+          // Soft delete only (§30): a mis-tap must never destroy history.
+          allow delete: if false;
+        }
+
+        function isValidRecord() {
+          let data = request.resource.data;
+          return isNonEmptyString(data.title, 200)
+                 && isNonEmptyString(data.subject, 60)
+                 && isNonEmptyString(data.academicYearId, 40)
+                 && data.type in ['worksheet', 'classwork']
+                 && data.status in ['pending', 'completed']
+                 && data.date is timestamp
+                 && data.isDeleted is bool
+                 && data.attachments is list
+                 // Bounds the document so a runaway client cannot push a
+                 // record near Firestore's 1 MiB limit.
+                 && data.attachments.size() <= 50
+                 && data.notes is string
+                 && data.notes.size() <= 5000;
+        }
+      }
+    }
+
+    // Anything not matched above is denied, including any future collection
+    // added outside a user's subtree.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

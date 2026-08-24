@@ -37,23 +37,40 @@ class _AddSubjectPageState extends State<AddSubjectPage> {
     super.dispose();
   }
 
-  void _save() {
+  bool _saving = false;
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+
     final state = AppScope.read(context);
-    state.addSubject(
-      Subject(
-        name: _displayName,
-        abbr: _abbr,
-        hue: _hue,
-        order: state.subjects.length + 1,
-        active: _active,
-      ),
-    );
-    Navigator.of(context).pop();
-    AppToast.show(
-      context,
-      title: 'Subject added',
-      description: '$_displayName is now available when adding records.',
-    );
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final name = _displayName;
+
+    try {
+      await state.addSubject(
+        Subject(
+          name: name,
+          abbr: _abbr,
+          hue: _hue,
+          order: state.subjects.length + 1,
+          active: _active,
+        ),
+      );
+      if (!mounted) return;
+      navigator.pop();
+      AppToast.showOn(
+        messenger,
+        context,
+        title: 'Subject added',
+        description: '$name is now available when adding records.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppToast.failure(context, error, title: "Couldn't add subject");
+    }
   }
 
   @override
@@ -201,7 +218,9 @@ class _AddSubjectPageState extends State<AddSubjectPage> {
             StickyFooter(
               child: AppFilledButton(
                 label: 'Save Subject',
-                onPressed: _name.text.trim().isEmpty ? null : _save,
+                onPressed: (_saving || _name.text.trim().isEmpty)
+                    ? null
+                    : _save,
               ),
             ),
           ],

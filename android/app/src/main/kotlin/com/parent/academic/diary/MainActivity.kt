@@ -1,4 +1,4 @@
-package com.parentdiary.parent_academic_diary
+package com.parent.academic.diary
 
 import io.flutter.embedding.android.FlutterActivity
 

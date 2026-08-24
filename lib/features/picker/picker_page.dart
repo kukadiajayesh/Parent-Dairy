@@ -1,16 +1,30 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/services/image_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../core/widgets/toast.dart';
+import 'attachment_source_row.dart';
 
-/// Dark capture / review screen. Returns the number of attachments the caller
-/// should add, so the form that pushed it can update its own list.
+/// Dark capture / review screen (§12).
+///
+/// Returns the files the parent kept, so the form that pushed it can attach
+/// them. Cancelling returns an empty list, never a partial one.
 class PickerPage extends StatefulWidget {
-  const PickerPage({super.key});
+  const PickerPage({super.key, this.initialSource, this.allowMultiple = true});
+
+  /// Opens straight into the camera or gallery, so "Camera" on a form is one
+  /// tap rather than two (§37).
+  final AttachmentSource? initialSource;
+
+  final bool allowMultiple;
 
   @override
   State<PickerPage> createState() => _PickerPageState();
@@ -20,26 +34,97 @@ class _PickerPageState extends State<PickerPage> {
   static const _ink = Color(0xFF1F1B16);
   static const _chip = Color(0xFF33302B);
   static const _muted = Color(0xFFBDB5AA);
+  static const _accent = Color(0xFF9FB6DE);
 
-  int _shots = 2;
+  final List<PickedAttachment> _shots = [];
   int _selected = 0;
+  bool _busy = false;
 
-  void _capture() => setState(() {
-        _shots++;
-        _selected = _shots - 1;
-      });
+  @override
+  void initState() {
+    super.initState();
+    final source = widget.initialSource;
+    if (source != null) {
+      // After the first frame so the dark scaffold is behind the system camera
+      // rather than a white flash.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _pick(source));
+    }
+  }
+
+  PickedAttachment? get _current =>
+      _shots.isEmpty ? null : _shots[_selected.clamp(0, _shots.length - 1)];
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+    } catch (error) {
+      if (mounted) AppToast.failure(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _pick(AttachmentSource source) => _run(() async {
+    final picked = switch (source) {
+      AttachmentSource.camera => [
+        ?await ImageService.capture(),
+      ],
+      AttachmentSource.gallery => await ImageService.pickFromGallery(
+        multiple: widget.allowMultiple,
+      ),
+      AttachmentSource.files => await ImageService.pickFiles(
+        multiple: widget.allowMultiple,
+      ),
+    };
+    if (picked.isEmpty || !mounted) return;
+
+    setState(() {
+      if (widget.allowMultiple) {
+        _shots.addAll(picked);
+      } else {
+        _shots
+          ..clear()
+          ..add(picked.first);
+      }
+      _selected = _shots.length - 1;
+    });
+  });
+
+  Future<void> _crop() => _run(() async {
+    final current = _current;
+    if (current == null) return;
+    final cropped = await ImageService.crop(current, tokens: context.t);
+    if (!mounted) return;
+    setState(() => _shots[_selected] = cropped);
+  });
+
+  Future<void> _rotate() => _run(() async {
+    final current = _current;
+    if (current == null) return;
+    final rotated = await ImageService.rotate(current);
+    if (!mounted) return;
+    setState(() => _shots[_selected] = rotated);
+  });
 
   void _deleteSelected() {
-    if (_shots == 0) return;
+    if (_shots.isEmpty) return;
     setState(() {
-      _shots--;
-      _selected = _selected.clamp(0, _shots == 0 ? 0 : _shots - 1);
+      _shots.removeAt(_selected);
+      _selected = _shots.isEmpty ? 0 : _selected.clamp(0, _shots.length - 1);
     });
   }
+
+  void _done() => Navigator.of(context).pop<List<PickedAttachment>>(_shots);
+
+  void _cancel() =>
+      Navigator.of(context).pop<List<PickedAttachment>>(const []);
 
   @override
   Widget build(BuildContext context) {
     final k = context.t;
+    final current = _current;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
@@ -57,7 +142,7 @@ class _PickerPageState extends State<PickerPage> {
                   children: [
                     const SizedBox(width: 16),
                     AppIconButton(
-                      onTap: () => Navigator.of(context).pop(0),
+                      onTap: _cancel,
                       tooltip: 'Cancel',
                       child: const StrokeIcon(
                         AppIcons.close,
@@ -77,16 +162,16 @@ class _PickerPageState extends State<PickerPage> {
                       ),
                     ),
                     InkWell(
-                      onTap: () => Navigator.of(context).pop(_shots),
+                      onTap: _shots.isEmpty ? null : _done,
                       borderRadius: BorderRadius.circular(10),
-                      child: const Padding(
-                        padding: EdgeInsets.all(10),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
                         child: Text(
                           'Done',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF9FB6DE),
+                            color: _shots.isEmpty ? _muted : _accent,
                           ),
                         ),
                       ),
@@ -98,12 +183,31 @@ class _PickerPageState extends State<PickerPage> {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: ImageSlot(
-                    key: ValueKey(_selected),
-                    placeholder: _shots == 0
-                        ? 'No photos yet'
-                        : 'Captured photo preview',
-                    radius: 18,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ImageSlot(
+                        key: ValueKey(current?.path ?? 'empty'),
+                        placeholder: _shots.isEmpty
+                            ? 'No photos yet'
+                            : (current?.isPdf ?? false
+                                  ? current!.name
+                                  : 'Captured photo preview'),
+                        image: fileImage(
+                          (current?.isPdf ?? true) ? null : current?.path,
+                        ),
+                        radius: 18,
+                      ),
+                      if (_busy)
+                        const ColoredBox(
+                          color: Color(0x66000000),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -112,12 +216,12 @@ class _PickerPageState extends State<PickerPage> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _shots + 1,
+                  itemCount: _shots.length + 1,
                   separatorBuilder: (_, _) => const SizedBox(width: 10),
                   itemBuilder: (context, index) {
-                    if (index == _shots) {
+                    if (index == _shots.length) {
                       return InkWell(
-                        onTap: _capture,
+                        onTap: () => _pick(AttachmentSource.camera),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           width: 64,
@@ -136,6 +240,7 @@ class _PickerPageState extends State<PickerPage> {
                         ),
                       );
                     }
+                    final shot = _shots[index];
                     return GestureDetector(
                       onTap: () => setState(() => _selected = index),
                       child: DecoratedBox(
@@ -143,13 +248,14 @@ class _PickerPageState extends State<PickerPage> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: index == _selected
-                                ? const Color(0xFF9FB6DE)
+                                ? _accent
                                 : Colors.transparent,
                             width: 2,
                           ),
                         ),
                         child: ImageSlot(
-                          placeholder: '${index + 1}',
+                          placeholder: shot.isPdf ? 'PDF' : '${index + 1}',
+                          image: fileImage(shot.isPdf ? null : shot.path),
                           radius: 12,
                           width: 64,
                           height: 64,
@@ -165,15 +271,29 @@ class _PickerPageState extends State<PickerPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _Tool(icon: AppIcons.crop, label: 'Crop', onTap: () {}),
-                    _Tool(icon: AppIcons.rotate, label: 'Rotate', onTap: () {}),
+                    _Tool(
+                      icon: AppIcons.crop,
+                      label: 'Crop',
+                      // Cropping a PDF is meaningless; the tool greys out
+                      // rather than failing after the tap.
+                      onTap: (current?.isPdf ?? true) ? null : _crop,
+                    ),
+                    _Tool(
+                      icon: AppIcons.rotate,
+                      label: 'Rotate',
+                      onTap: (current?.isPdf ?? true) ? null : _rotate,
+                    ),
                     _Tool(
                       icon: AppIcons.trash,
                       label: 'Delete',
                       tint: const Color(0xFFE8A79F),
-                      onTap: _deleteSelected,
+                      onTap: _shots.isEmpty ? null : _deleteSelected,
                     ),
-                    _Tool(icon: AppIcons.plus, label: 'Add', onTap: _capture),
+                    _Tool(
+                      icon: AppIcons.plus,
+                      label: 'Add',
+                      onTap: () => _pick(AttachmentSource.gallery),
+                    ),
                   ],
                 ),
               ),
@@ -191,7 +311,7 @@ class _PickerPageState extends State<PickerPage> {
                         background: k.surf,
                         hoverBackground: k.hov2,
                         foreground: k.tx,
-                        onPressed: _capture,
+                        onPressed: () => _pick(AttachmentSource.camera),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -204,7 +324,7 @@ class _PickerPageState extends State<PickerPage> {
                         background: _chip,
                         hoverBackground: const Color(0xFF3B372F),
                         foreground: Colors.white,
-                        onPressed: _capture,
+                        onPressed: () => _pick(AttachmentSource.gallery),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -216,7 +336,7 @@ class _PickerPageState extends State<PickerPage> {
                       background: _chip,
                       hoverBackground: const Color(0xFF3B372F),
                       foreground: Colors.white,
-                      onPressed: _capture,
+                      onPressed: () => _pick(AttachmentSource.files),
                     ),
                   ],
                 ),
@@ -239,39 +359,43 @@ class _Tool extends StatelessWidget {
 
   final SvgIcon icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Color tint;
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: const Color(0xFF33302B),
-                borderRadius: BorderRadius.circular(14),
+      child: Opacity(
+        opacity: enabled ? 1 : .4,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF33302B),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: StrokeIcon(icon, size: 20, color: tint, strokeWidth: 1.9),
               ),
-              child: StrokeIcon(icon, size: 20, color: tint, strokeWidth: 1.9),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFBDB5AA),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFBDB5AA),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

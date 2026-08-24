@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/services/attachment_actions.dart';
 import '../../core/widgets/app_icons.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../core/widgets/toast.dart';
 import '../../data/models.dart';
 
 class ViewerArgs {
@@ -33,8 +36,39 @@ class _ViewerPageState extends State<ViewerPage> {
   late final PageController _controller =
       PageController(initialPage: widget.args.initialIndex);
   late int _index = widget.args.initialIndex;
+  bool _busy = false;
 
   List<Attachment> get _items => widget.args.attachments;
+
+  Attachment get _current => _items[_index];
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+    } catch (error) {
+      if (mounted) AppToast.failure(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _share() => _run(() => AttachmentActions.share(_current));
+
+  Future<void> _download() => _run(() async {
+    final path = await AttachmentActions.saveToDevice(_current);
+    if (!mounted) return;
+    AppToast.show(
+      context,
+      title: 'Saved to this phone',
+      // Show just "Academic Diary/fractions-page-1.jpg", not the full
+      // sandbox path, which means nothing to a parent.
+      description: path.split('/').reversed.take(2).toList().reversed.join('/'),
+      actionLabel: 'Open',
+      onAction: () => _run(() => AttachmentActions.open(_current)),
+    );
+  });
 
   @override
   void dispose() {
@@ -100,7 +134,8 @@ class _ViewerPageState extends State<ViewerPage> {
                             ),
                           ),
                           Text(
-                            'Image ${_index + 1} of ${_items.length}',
+                            '${current.isPdf ? 'Document' : 'Image'} '
+                            '${_index + 1} of ${_items.length}',
                             style: const TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
@@ -111,7 +146,7 @@ class _ViewerPageState extends State<ViewerPage> {
                       ),
                     ),
                     AppIconButton(
-                      onTap: () {},
+                      onTap: _busy ? null : _share,
                       tooltip: 'Share',
                       child: const StrokeIcon(
                         AppIcons.share,
@@ -120,7 +155,7 @@ class _ViewerPageState extends State<ViewerPage> {
                       ),
                     ),
                     AppIconButton(
-                      onTap: () {},
+                      onTap: _busy ? null : _download,
                       tooltip: 'Download',
                       child: const StrokeIcon(
                         AppIcons.download,
@@ -149,9 +184,15 @@ class _ViewerPageState extends State<ViewerPage> {
                           minScale: 1,
                           maxScale: 4,
                           child: _items[index].isPdf
-                              ? const _PdfPlaceholder()
+                              ? _PdfPlaceholder(
+                                  attachment: _items[index],
+                                  onOpen: () => _run(
+                                    () => AttachmentActions.open(_items[index]),
+                                  ),
+                                )
                               : ImageSlot(
                                   placeholder: _items[index].meta,
+                                  image: attachmentImage(_items[index]),
                                   radius: 10,
                                 ),
                         ),
@@ -232,6 +273,7 @@ class _ViewerPageState extends State<ViewerPage> {
                           }
                           return ImageSlot(
                             placeholder: '${index + 1}',
+                            image: attachmentImage(_items[index]),
                             radius: 10,
                             width: 58,
                             height: 58,
@@ -301,8 +343,13 @@ class _ArrowButton extends StatelessWidget {
   }
 }
 
+/// A PDF cannot be drawn inline without embedding a renderer, so the viewer
+/// shows the document's identity and hands off to the phone's PDF app.
 class _PdfPlaceholder extends StatelessWidget {
-  const _PdfPlaceholder();
+  const _PdfPlaceholder({required this.attachment, required this.onOpen});
+
+  final Attachment attachment;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -311,14 +358,45 @@ class _PdfPlaceholder extends StatelessWidget {
         color: const Color(0xFF26231F),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: const Center(
-        child: Text(
-          'PDF',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFFBDB5AA),
-          ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'PDF',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFFBDB5AA),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Text(
+                attachment.name,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  height: 1.4,
+                  color: Color(0xFF9C948A),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            AppTonalButton(
+              label: 'Open document',
+              height: 44,
+              fontSize: 13.5,
+              borderRadius: 13,
+              background: const Color(0xFF34302B),
+              hoverBackground: const Color(0xFF3E3933),
+              foreground: Colors.white,
+              onPressed: onOpen,
+            ),
+          ],
         ),
       ),
     );

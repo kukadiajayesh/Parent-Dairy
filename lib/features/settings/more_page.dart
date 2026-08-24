@@ -8,8 +8,10 @@ import '../../core/widgets/fields.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/sheets.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../core/services/notification_service.dart';
+import '../../core/services/prefs_service.dart';
+import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
-import '../../data/sample_data.dart';
 import '../states/design_states_page.dart';
 import 'children_page.dart';
 import 'subjects_page.dart';
@@ -24,11 +26,65 @@ class MorePage extends StatefulWidget {
 }
 
 class _MorePageState extends State<MorePage> {
-  bool _notifications = true;
+  late bool _notifications = PrefsService.instance.remindersEnabled;
+  final NotificationService _notificationService = NotificationService.instance;
 
   void _push(Widget page) => Navigator.of(context).push(
         MaterialPageRoute<void>(builder: (_) => page),
       );
+
+  /// Turning reminders on asks for the permission at the moment it is needed,
+  /// and re-arms every pending worksheet; turning them off cancels the lot.
+  Future<void> _setReminders(bool value) async {
+    final state = AppScope.read(context);
+    setState(() => _notifications = value);
+    await PrefsService.instance.setRemindersEnabled(value);
+    await _notificationService.init();
+
+    if (!value) {
+      await _notificationService.cancelAll();
+      return;
+    }
+
+    final granted = await _notificationService.requestPermission();
+    if (!granted) {
+      if (!mounted) return;
+      setState(() => _notifications = false);
+      await PrefsService.instance.setRemindersEnabled(false);
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        title: 'Notifications are blocked',
+        description: 'Allow notifications for this app in system settings.',
+        kind: ToastKind.warn,
+        actionLabel: 'OK',
+      );
+      return;
+    }
+    await _notificationService.resyncAll(state.pendingWorksheets);
+  }
+
+  Future<void> _logout() async {
+    final confirmed = await confirmDelete(
+      context,
+      title: 'Log out?',
+      description: 'You can sign back in with Google at any time.',
+      confirmLabel: 'Log out',
+    );
+    if (!confirmed || !mounted) return;
+
+    final state = AppScope.read(context);
+    final navigator = Navigator.of(context, rootNavigator: true);
+    try {
+      await _notificationService.cancelAll();
+      await state.signOut();
+      if (!mounted) return;
+      navigator.pushNamedAndRemoveUntil(Routes.login, (_) => false);
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.failure(context, error, title: "Couldn't log out");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,8 +119,8 @@ class _MorePageState extends State<MorePage> {
                   AppCard(
                     child: Row(
                       children: [
-                        const Monogram(
-                          initials: SampleData.parentInitials,
+                        Monogram(
+                          initials: state.parentInitials,
                           size: 48,
                           fontSize: 16,
                         ),
@@ -73,16 +129,16 @@ class _MorePageState extends State<MorePage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                SampleData.parentFullName,
-                                style: TextStyle(
+                              Text(
+                                state.parentFullName,
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                SampleData.parentEmail,
+                                state.parentEmail,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -133,13 +189,13 @@ class _MorePageState extends State<MorePage> {
                       SettingsRow(
                         label: 'Notifications',
                         showChevron: false,
-                        onTap: () =>
-                            setState(() => _notifications = !_notifications),
+                        subtitle: 'Worksheet due-date reminders',
+                        onTap: () => _setReminders(!_notifications),
                         trailing: AppSwitch(
                           value: _notifications,
                           width: 48,
                           height: 28,
-                          onChanged: (v) => setState(() => _notifications = v),
+                          onChanged: _setReminders,
                         ),
                       ),
                       SettingsRow(
@@ -157,17 +213,17 @@ class _MorePageState extends State<MorePage> {
                       ),
                       SettingsRow(
                         label: 'Backup & sync',
-                        subtitle: state.isOffline
-                            ? 'Waiting for a connection'
-                            : 'Last synced 2 minutes ago',
+                        subtitle: _syncSubtitle(state),
                         showChevron: false,
-                        onTap: state.toggleOffline,
+                        // Tapping retries stranded uploads. The design's toggle
+                        // was a preview affordance; the real state comes from
+                        // the network and the upload queue.
+                        onTap: state.retrySync,
                         trailing: StatusPill(
-                          label: state.isOffline ? 'Offline' : 'Synced',
-                          background: state.isOffline ? k.warnC : k.secC,
-                          foreground:
-                              state.isOffline ? k.warnInk : k.secInk,
-                          dotColor: state.isOffline ? k.warn : k.secFill,
+                          label: state.syncLabel,
+                          background: _syncOk(state) ? k.secC : k.warnC,
+                          foreground: _syncOk(state) ? k.secInk : k.warnInk,
+                          dotColor: _syncOk(state) ? k.secFill : k.warn,
                           fontSize: 11.5,
                         ),
                       ),
@@ -178,8 +234,13 @@ class _MorePageState extends State<MorePage> {
                   const SizedBox(height: 10),
                   SettingsGroup(
                     children: [
+                      SettingsRow(
+                        label: 'Google account',
+                        value: state.parentEmail,
+                        showChevron: false,
+                        onTap: () {},
+                      ),
                       for (final label in const [
-                        'Google account',
                         'Privacy',
                         'Terms',
                         'Help & support',
@@ -195,21 +256,7 @@ class _MorePageState extends State<MorePage> {
                           size: 18,
                           color: k.err,
                         ),
-                        onTap: () async {
-                          final confirmed = await confirmDelete(
-                            context,
-                            title: 'Log out?',
-                            description:
-                                'You can sign back in with Google at any time.',
-                            confirmLabel: 'Log out',
-                          );
-                          if (!confirmed || !context.mounted) return;
-                          Navigator.of(context, rootNavigator: true)
-                              .pushNamedAndRemoveUntil(
-                            Routes.login,
-                            (_) => false,
-                          );
-                        },
+                        onTap: _logout,
                       ),
                     ],
                   ),
@@ -232,5 +279,15 @@ class _MorePageState extends State<MorePage> {
         ),
       ),
     );
+  }
+
+  static bool _syncOk(AppState state) =>
+      !state.isOffline && !state.isSyncing && !state.hasFailedUploads;
+
+  static String _syncSubtitle(AppState state) {
+    if (state.isOffline) return 'Waiting for a connection';
+    if (state.isSyncing) return 'Uploading attachments…';
+    if (state.hasFailedUploads) return 'Tap to retry failed uploads';
+    return 'Everything is backed up to your Google account';
   }
 }

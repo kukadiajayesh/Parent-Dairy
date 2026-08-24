@@ -53,24 +53,40 @@ class _AddYearPageState extends State<AddYearPage> {
     });
   }
 
-  void _save() {
+  bool _saving = false;
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+
     final state = AppScope.read(context);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final label = _label.text.trim();
-    state.addYear(
-      AcademicYear(
-        label: label,
-        span: '${AppDate.monthYear(_start)} – ${AppDate.monthYear(_end)}',
-        records: 0,
-        active: _makeActive,
-      ),
-      makeActive: _makeActive,
-    );
-    Navigator.of(context).pop();
-    AppToast.show(
-      context,
-      title: 'Academic year added',
-      description: '$label is ready for new records.',
-    );
+
+    try {
+      await state.addYear(
+        AcademicYear(
+          label: label,
+          span: '${AppDate.monthYear(_start)} – ${AppDate.monthYear(_end)}',
+          records: 0,
+          active: _makeActive,
+        ),
+        makeActive: _makeActive,
+      );
+      if (!mounted) return;
+      navigator.pop();
+      AppToast.showOn(
+        messenger,
+        context,
+        title: 'Academic year added',
+        description: '$label is ready for new records.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppToast.failure(context, error, title: "Couldn't add year");
+    }
   }
 
   @override
@@ -221,7 +237,9 @@ class _AddYearPageState extends State<AddYearPage> {
             StickyFooter(
               child: AppFilledButton(
                 label: 'Save Academic Year',
-                onPressed: _label.text.trim().isEmpty ? null : _save,
+                onPressed: (_saving || _label.text.trim().isEmpty)
+                    ? null
+                    : _save,
               ),
             ),
           ],

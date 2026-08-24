@@ -8,6 +8,7 @@ import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/sheets.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 
 /// Manage Subjects: reorder handle, badge, name and order, edit + delete.
@@ -93,7 +94,17 @@ class SubjectsPage extends StatelessWidget {
                                     'Records already saved under this subject '
                                     'keep their colour and label.',
                               );
-                              if (confirmed) state.removeSubject(subject.name);
+                              if (!confirmed || !context.mounted) return;
+                              try {
+                                await state.removeSubject(subject.name);
+                              } catch (error) {
+                                if (!context.mounted) return;
+                                AppToast.failure(
+                                  context,
+                                  error,
+                                  title: "Couldn't remove subject",
+                                );
+                              }
                             },
                             child: StrokeIcon(
                               AppIcons.trash,

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
 import '../../core/format.dart';
+import '../../core/services/attachment_actions.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/image_slot.dart';
@@ -40,14 +42,29 @@ class WorksheetDetailPage extends StatelessWidget {
     Future<void> delete() async {
       if (!await confirmDelete(context)) return;
       if (!context.mounted) return;
-      state.deleteRecord(record.id);
+      final messenger = ScaffoldMessenger.of(context);
+      await state.deleteRecord(record.id);
+      if (!context.mounted) return;
       Navigator.of(context).pop();
-      AppToast.show(
+      AppToast.showOn(
+        messenger,
         context,
         title: 'Record deleted',
         description: '${record.title} was removed.',
         kind: ToastKind.warn,
+        // Soft delete (§30) makes Undo a real restore, not a re-create.
+        actionLabel: 'Undo',
+        onAction: () => state.restoreRecord(record.id),
       );
+    }
+
+    Future<void> share() async {
+      try {
+        await AttachmentActions.shareRecord(record);
+      } catch (error) {
+        if (!context.mounted) return;
+        AppToast.failure(context, error, title: "Couldn't share");
+      }
     }
 
     return Scaffold(
@@ -62,7 +79,7 @@ class WorksheetDetailPage extends StatelessWidget {
                 actions: [
                   AppIconButton(
                     tooltip: 'Share',
-                    onTap: () {},
+                    onTap: share,
                     child: StrokeIcon(AppIcons.share, size: 19, color: k.tx2),
                   ),
                   AppIconButton(
@@ -182,7 +199,10 @@ class WorksheetDetailPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     ImageSlot(
-                      placeholder: record.attachments.first.meta,
+                      placeholder: record.attachments.first.isPdf
+                          ? record.attachments.first.name
+                          : record.attachments.first.meta,
+                      image: attachmentImage(record.attachments.first),
                       radius: 18,
                       height: 280,
                       onTap: () => _openViewer(context, record, 0),
@@ -219,7 +239,10 @@ class WorksheetDetailPage extends StatelessWidget {
                             );
                           }
                           return ImageSlot(
-                            placeholder: '${index + 1}',
+                            placeholder: record.attachments[index].isPdf
+                                ? 'PDF'
+                                : '${index + 1}',
+                            image: attachmentImage(record.attachments[index]),
                             radius: 12,
                             width: 76,
                             height: 76,
@@ -297,22 +320,8 @@ class WorksheetDetailPage extends StatelessWidget {
                       background: k.surf2,
                       hoverBackground: k.hov,
                       foreground: k.tx2,
-                      onPressed: () {
-                        state.deleteRecord(record.id);
-                        state.addRecord(
-                          DiaryRecord(
-                            id: record.id,
-                            type: record.type,
-                            subject: record.subject,
-                            title: record.title,
-                            date: record.date,
-                            dueDate: record.dueDate,
-                            notes: record.notes,
-                            attachments: record.attachments,
-                            answerKey: record.answerKey,
-                          ),
-                        );
-                      },
+                      onPressed: () =>
+                          state.markCompleted(record.id, completed: false),
                     )
                   : AppFilledButton(
                       label: 'Mark completed',
