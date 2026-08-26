@@ -8,7 +8,7 @@ import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
-import '../../core/widgets/image_slot.dart';
+import '../../core/widgets/sheets.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
@@ -31,12 +31,17 @@ class AddClassworkPage extends StatefulWidget {
 }
 
 class _AddClassworkPageState extends State<AddClassworkPage> {
-  late final TextEditingController _title =
-      TextEditingController(text: widget.existing?.title ?? '');
+  static final List<String> _chapterOptions = [
+    for (var i = 1; i <= 50; i++) 'Chapter $i',
+  ];
+
   late final TextEditingController _notes =
       TextEditingController(text: widget.existing?.notes ?? '');
 
   String? _subject;
+  late String? _chapter = (widget.existing?.chapter ?? '').isEmpty
+      ? ((widget.existing?.title ?? '').isEmpty ? null : widget.existing!.title)
+      : widget.existing!.chapter;
 
   /// §37: today by default.
   late DateTime _date =
@@ -48,7 +53,7 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
 
   bool get _isEditing => widget.existing != null;
   bool get _canSave =>
-      !_saving && _title.text.trim().isNotEmpty && _subject != null;
+      !_saving && _chapter != null && _subject != null;
 
   @override
   void didChangeDependencies() {
@@ -61,9 +66,18 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
 
   @override
   void dispose() {
-    _title.dispose();
     _notes.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickChapter() async {
+    final choice = await pickOption(
+      context,
+      title: 'Chapter',
+      options: _chapterOptions,
+      current: _chapter ?? '',
+    );
+    if (choice != null) setState(() => _chapter = choice);
   }
 
   Future<void> _addPhotos([AttachmentSource source = AttachmentSource.camera]) async {
@@ -95,6 +109,7 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final subject = _subject!;
+    final chapter = _chapter!;
 
     final record = DiaryRecord(
       id: widget.existing?.id ?? '',
@@ -102,8 +117,9 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
       academicYearId: widget.existing?.academicYearId ?? state.activeYear,
       type: RecordType.classwork,
       subject: subject,
-      title: _title.text.trim(),
+      title: chapter,
       date: _date,
+      chapter: chapter,
       notes: _notes.text.trim(),
       attachments: _photos,
       createdAt: widget.existing?.createdAt,
@@ -164,11 +180,11 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  AppTextField(
-                    label: 'Title',
-                    controller: _title,
-                    hintText: 'Chapter 4 Questions',
-                    onChanged: (_) => setState(() {}),
+                  PickerField(
+                    label: 'Chapter',
+                    value: _chapter ?? 'Select a chapter',
+                    isPlaceholder: _chapter == null,
+                    onTap: _pickChapter,
                   ),
                   const SizedBox(height: 18),
                   PickerField(
@@ -194,9 +210,30 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                     minHeight: 66,
                   ),
                   const SizedBox(height: 18),
-                  _PhotoDropZone(
-                    onCamera: () => _addPhotos(AttachmentSource.camera),
-                    onGallery: () => _addPhotos(AttachmentSource.gallery),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Classwork',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        AppFormat.photoCount(_photos.length),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: k.tx4,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  AttachmentSourceRow(
+                    emphasizeFirst: true,
+                    onPick: _addPhotos,
                   ),
                   if (_photos.isNotEmpty) ...[
                     const SizedBox(height: 18),
@@ -211,11 +248,9 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                           Stack(
                             fit: StackFit.expand,
                             children: [
-                              ImageSlot(
-                                placeholder: _photos[i].isPdf
-                                    ? 'PDF'
-                                    : '${i + 1}',
-                                image: attachmentImage(_photos[i]),
+                              attachmentThumb(
+                                context,
+                                _photos[i],
                                 radius: 14,
                               ),
                               Positioned(
@@ -262,69 +297,4 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
   }
 }
 
-class _PhotoDropZone extends StatelessWidget {
-  const _PhotoDropZone({required this.onCamera, required this.onGallery});
 
-  final VoidCallback onCamera;
-  final VoidCallback onGallery;
-
-  @override
-  Widget build(BuildContext context) {
-    final k = context.t;
-    return DashedContainer(
-      child: Column(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: k.subSciC,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: StrokeIcon(AppIcons.camera, size: 24, color: k.subSciInk),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Add classwork photos',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Snap the notebook page or pick from gallery',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, height: 1.5, color: k.tx3),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: AppFilledButton(
-                  label: 'Camera',
-                  height: 48,
-                  elevated: false,
-                  color: k.secFill,
-                  hoverColor: k.secFillH,
-                  onPressed: onCamera,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: AppTonalButton(
-                  label: 'Gallery',
-                  height: 48,
-                  fontSize: 14,
-                  borderRadius: 14,
-                  background: k.secC,
-                  hoverBackground: k.secCH,
-                  foreground: k.secInk,
-                  onPressed: onGallery,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}

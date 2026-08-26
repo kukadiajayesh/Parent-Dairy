@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/services/image_service.dart';
 import '../data/models.dart';
 import '../features/auth/login_page.dart';
 import '../features/children/child_setup_page.dart';
@@ -10,6 +11,8 @@ import '../features/onboarding/splash_page.dart';
 import '../features/picker/picker_page.dart';
 import '../features/settings/add_subject_page.dart';
 import '../features/settings/add_year_page.dart';
+import '../features/share/attach_answer_key_page.dart';
+import '../features/share/share_chooser_page.dart';
 import '../features/share/share_image_page.dart';
 import '../features/viewer/viewer_page.dart';
 import '../features/worksheet/add_worksheet_page.dart';
@@ -28,7 +31,9 @@ abstract final class Routes {
   static const worksheetDetail = '/worksheet';
   static const addClasswork = '/add-classwork';
   static const classworkDetail = '/classwork';
+  static const shareChooser = '/share-chooser';
   static const shareImage = '/share-image';
+  static const attachAnswerKey = '/attach-answer-key';
   static const picker = '/picker';
   static const viewer = '/viewer';
   static const addSubject = '/add-subject';
@@ -57,9 +62,17 @@ abstract final class Routes {
         return page(AddClassworkPage(existing: settings.arguments as DiaryRecord?));
       case classworkDetail:
         return page(ClassworkDetailPage(recordId: settings.arguments! as String));
+      case shareChooser:
+        return page(
+          ShareChooserPage(args: settings.arguments! as ShareImageArgs),
+        );
       case shareImage:
         return page(
           ShareImagePage(args: settings.arguments as ShareImageArgs?),
+        );
+      case attachAnswerKey:
+        return page(
+          AttachAnswerKeyPage(file: settings.arguments! as PickedAttachment),
         );
       case picker:
         return page(const PickerPage());

@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../../app/routes.dart';
 import '../../core/format.dart';
 import '../../core/services/attachment_actions.dart';
+import '../../core/services/image_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
-import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/sheets.dart';
 import '../../core/widgets/states.dart';
@@ -16,20 +16,59 @@ import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../picker/attachment_source_row.dart';
+import '../picker/picker_page.dart';
 import '../viewer/viewer_page.dart';
 
 /// Worksheet detail: subject tag, status, dates, notes, attachment gallery,
 /// answer key and the "Mark completed" action.
-class WorksheetDetailPage extends StatelessWidget {
+class WorksheetDetailPage extends StatefulWidget {
   const WorksheetDetailPage({super.key, required this.recordId});
 
   final String recordId;
 
   @override
+  State<WorksheetDetailPage> createState() => _WorksheetDetailPageState();
+}
+
+class _WorksheetDetailPageState extends State<WorksheetDetailPage> {
+  bool _attachingAnswerKey = false;
+
+  Future<void> _pickAnswerKey(DiaryRecord record, AttachmentSource source) async {
+    final picked = await Navigator.of(context).push<List<PickedAttachment>>(
+      MaterialPageRoute(
+        builder: (_) =>
+            PickerPage(initialSource: source, allowMultiple: false),
+        settings: const RouteSettings(name: Routes.picker),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+
+    setState(() => _attachingAnswerKey = true);
+    final state = AppScope.read(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await state.saveRecord(record, newAnswerKey: picked.first);
+      if (!mounted) return;
+      AppToast.showOn(
+        messenger,
+        context,
+        title: 'Answer key attached',
+        description: '${record.title} now has an answer key.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.failure(context, error, title: "Couldn't attach answer key");
+    } finally {
+      if (mounted) setState(() => _attachingAnswerKey = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final k = context.t;
     final state = AppScope.of(context);
-    final record = state.recordById(recordId);
+    final record = state.recordById(widget.recordId);
 
     if (record == null) {
       // The record was deleted while this screen was on the stack.
@@ -159,6 +198,13 @@ class WorksheetDetailPage extends StatelessWidget {
                         label: 'Given',
                         value: AppDate.full(record.date),
                       ),
+                      // The heading above already shows the chapter for every
+                      // worksheet saved since the chapter picker replaced the
+                      // title field — this only adds value for older records
+                      // whose title was typed separately.
+                      if (record.chapter.isNotEmpty &&
+                          record.chapter != record.title)
+                        _MetaColumn(label: 'Chapter', value: record.chapter),
                       if (record.dueDate != null)
                         _MetaColumn(
                           label: 'Due',
@@ -198,89 +244,75 @@ class WorksheetDetailPage extends StatelessWidget {
                       'page${record.attachments.length == 1 ? '' : 's'}',
                     ),
                     const SizedBox(height: 10),
-                    ImageSlot(
-                      placeholder: record.attachments.first.isPdf
-                          ? record.attachments.first.name
-                          : record.attachments.first.meta,
-                      image: attachmentImage(record.attachments.first),
+                    attachmentThumb(
+                      context,
+                      record.attachments.first,
                       radius: 18,
                       height: 280,
-                      onTap: () => _openViewer(context, record, 0),
+                      onTap: () => _openAttachment(context, record, 0),
                     ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 76,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: record.attachments.length + 1,
-                        separatorBuilder: (_, _) => const SizedBox(width: 10),
-                        itemBuilder: (context, index) {
-                          if (index == record.attachments.length) {
-                            return InkWell(
-                              onTap: () => _openViewer(context, record, 0),
-                              borderRadius: BorderRadius.circular(12),
-                              child: DashedContainer(
-                                radius: 12,
-                                padding: EdgeInsets.zero,
-                                color: k.bd4,
-                                background: k.surf2,
-                                child: SizedBox(
-                                  width: 76,
-                                  height: 76,
-                                  child: Center(
-                                    child: StrokeIcon(
-                                      AppIcons.plus,
-                                      size: 20,
-                                      color: k.tx4,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                    if (record.attachments.length > 1) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 76,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: record.attachments.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 10),
+                          itemBuilder: (context, index) {
+                            return attachmentThumb(
+                              context,
+                              record.attachments[index],
+                              radius: 12,
+                              width: 76,
+                              height: 76,
+                              onTap: () =>
+                                  _openAttachment(context, record, index),
                             );
-                          }
-                          return ImageSlot(
-                            placeholder: record.attachments[index].isPdf
-                                ? 'PDF'
-                                : '${index + 1}',
-                            image: attachmentImage(record.attachments[index]),
-                            radius: 12,
-                            width: 76,
-                            height: 76,
-                            onTap: () => _openViewer(context, record, index),
-                          );
-                        },
+                          },
+                        ),
                       ),
-                    ),
+                    ],
                   ],
-                  if (record.answerKey != null) ...[
-                    const SizedBox(height: 18),
-                    const SectionLabel('Answer key'),
-                    const SizedBox(height: 10),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const SectionLabel('Answer key'),
+                      if (record.answerKey != null)
+                        AppIconButton(
+                          size: 32,
+                          borderRadius: 10,
+                          tooltip: 'Replace',
+                          onTap: _attachingAnswerKey
+                              ? null
+                              : () => _showAnswerKeySourceSheet(record),
+                          child: StrokeIcon(
+                            AppIcons.editSimple,
+                            size: 16,
+                            color: k.tx3,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (record.answerKey != null)
                     AppCard(
                       radius: 16,
-                      onTap: () => _openViewer(
+                      onTap: () => _openAttachment(
                         context,
                         record,
                         record.attachments.length,
                       ),
                       child: Row(
                         children: [
-                          Container(
+                          attachmentThumb(
+                            context,
+                            record.answerKey,
+                            radius: 12,
                             width: 52,
                             height: 52,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: k.surf2,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'PDF',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: k.tx3,
-                              ),
-                            ),
+                            showCaption: false,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -308,8 +340,16 @@ class WorksheetDetailPage extends StatelessWidget {
                           StrokeIcon(AppIcons.forward, size: 18, color: k.tx4),
                         ],
                       ),
+                    )
+                  else if (_attachingAnswerKey)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else
+                    AttachmentSourceRow(
+                      onPick: (source) => _pickAnswerKey(record, source),
                     ),
-                  ],
                 ],
               ),
             ),
@@ -348,16 +388,59 @@ class WorksheetDetailPage extends StatelessWidget {
     );
   }
 
-  void _openViewer(BuildContext context, DiaryRecord record, int index) {
+  Future<void> _showAnswerKeySourceSheet(DiaryRecord record) async {
+    final source = await showModalBottomSheet<AttachmentSource>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 26),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SectionLabel('Replace answer key'),
+              const SizedBox(height: 14),
+              AttachmentSourceRow(
+                emphasizeFirst: true,
+                onPick: (s) => Navigator.of(sheetContext).pop(s),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    await _pickAnswerKey(record, source);
+  }
+
+  /// A PDF opens directly in the device's own viewer; an image opens the
+  /// in-app gallery viewer as before.
+  Future<void> _openAttachment(
+    BuildContext context,
+    DiaryRecord record,
+    int index,
+  ) async {
+    final files = [
+      ...record.attachments,
+      if (record.answerKey != null) record.answerKey!,
+    ];
+    final attachment = files[index];
+    if (attachment.isPdf) {
+      try {
+        await AttachmentActions.open(attachment);
+      } catch (error) {
+        if (!context.mounted) return;
+        AppToast.failure(context, error, title: "Couldn't open file");
+      }
+      return;
+    }
+    final imagesOnly = files.where((f) => !f.isPdf).toList();
+    final newIndex = imagesOnly.indexOf(attachment);
     Navigator.of(context).pushNamed(
       Routes.viewer,
-      arguments: ViewerArgs(
-        attachments: [
-          ...record.attachments,
-          if (record.answerKey != null) record.answerKey!,
-        ],
-        initialIndex: index,
-      ),
+      arguments: ViewerArgs(attachments: imagesOnly, initialIndex: newIndex >= 0 ? newIndex : 0),
     );
   }
 }

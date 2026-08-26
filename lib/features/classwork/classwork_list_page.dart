@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../../app/routes.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
-import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
@@ -102,10 +102,12 @@ class _ClassworkCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const ImageSlot(
-            placeholder: 'Classwork photo',
+          attachmentThumb(
+            context,
+            record.attachments.firstOrNull,
             radius: 0,
             height: 150,
+            showCaption: false,
           ),
           Padding(
             padding: const EdgeInsets.all(14),

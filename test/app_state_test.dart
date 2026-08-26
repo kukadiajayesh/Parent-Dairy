@@ -1,5 +1,6 @@
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:parent_academic_diary/core/services/connectivity_service.dart';
 import 'package:parent_academic_diary/core/services/prefs_service.dart';
@@ -328,13 +329,9 @@ void main() {
   });
 
   group('theme', () {
-    test('persists across launches', () async {
+    test('always follows the system setting', () async {
       state = await signedInState();
-      expect(state.isDark, isFalse);
-
-      state.toggleTheme();
-      expect(state.isDark, isTrue);
-      expect(PrefsService.instance.isDark, isTrue);
+      expect(state.themeMode, ThemeMode.system);
     });
   });
 }

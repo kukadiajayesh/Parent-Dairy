@@ -33,6 +33,12 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
   /// the share is honoured once they are, rather than silently dropped.
   List<PickedAttachment> _heldShare = const [];
 
+  /// Whether the OS notification permission has been granted. Requested once
+  /// at startup now that reminders have no settings-screen toggle of their
+  /// own to trigger the prompt.
+  bool _notificationsGranted = false;
+  bool _remindersResynced = false;
+
   @override
   void initState() {
     super.initState();
@@ -47,6 +53,15 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
     _state.addListener(_onStateChanged);
     _share.incoming.addListener(_onSharedFiles);
     await _share.start();
+    unawaited(_requestNotificationPermission());
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    _notificationsGranted = await _notifications.requestPermission();
+    if (_notificationsGranted && _state.authStatus == AuthStatus.ready) {
+      _remindersResynced = true;
+      unawaited(_notifications.resyncAll(_state.pendingWorksheets));
+    }
   }
 
   void _onStateChanged() {
@@ -56,6 +71,15 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
       final files = _heldShare;
       _heldShare = const [];
       _openQuickAdd(files);
+    }
+    // Re-arms every pending worksheet's reminder the first time both
+    // permission and the parent's records are available — whichever lands
+    // second.
+    if (!_remindersResynced &&
+        _notificationsGranted &&
+        _state.authStatus == AuthStatus.ready) {
+      _remindersResynced = true;
+      unawaited(_notifications.resyncAll(_state.pendingWorksheets));
     }
   }
 
@@ -73,7 +97,7 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
 
   void _openQuickAdd(List<PickedAttachment> files) {
     _navigatorKey.currentState?.pushNamed(
-      Routes.shareImage,
+      Routes.shareChooser,
       arguments: ShareImageArgs(files: files),
     );
   }
@@ -109,7 +133,9 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
           // stay legible against the page background. The few dark screens
           // (splash, picker, viewer) override this with their own region.
           builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-            value: _state.isDark ? _darkOverlay : _lightOverlay,
+            value: MediaQuery.platformBrightnessOf(context) == Brightness.dark
+                ? _darkOverlay
+                : _lightOverlay,
             child: child ?? const SizedBox.shrink(),
           ),
         ),

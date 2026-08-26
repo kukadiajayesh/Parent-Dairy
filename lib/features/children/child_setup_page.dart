@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
+import '../../core/format.dart';
 import '../../core/services/image_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/fields.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/sheets.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/stroke_icon.dart';
@@ -30,10 +32,17 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
       TextEditingController(text: widget.child?.name ?? '');
   late final TextEditingController _school =
       TextEditingController(text: widget.child?.school ?? '');
+  late final TextEditingController _grNumber =
+      TextEditingController(text: widget.child?.grNumber ?? '');
+  late final TextEditingController _rollNumber =
+      TextEditingController(text: widget.child?.rollNumber ?? '');
+  late final TextEditingController _notes =
+      TextEditingController(text: widget.child?.notes ?? '');
 
   late String _grade = widget.child?.grade ?? 'Class 5';
   late String _section = widget.child?.section ?? 'B';
   late String _year = widget.child?.year ?? _defaultYearLabel();
+  late DateTime? _dateOfBirth = widget.child?.dateOfBirth;
 
   PickedAttachment? _photo;
   bool _saving = false;
@@ -98,7 +107,20 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
   void dispose() {
     _name.dispose();
     _school.dispose();
+    _grNumber.dispose();
+    _rollNumber.dispose();
+    _notes.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDateOfBirth() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateOfBirth ?? DateTime(DateTime.now().year - 8),
+      firstDate: DateTime(1990),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _dateOfBirth = picked);
   }
 
   Future<void> _pick({
@@ -107,15 +129,11 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
     required String current,
     required ValueChanged<String> onSelected,
   }) async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => _OptionSheet(
-        title: title,
-        options: options,
-        current: current,
-      ),
+    final choice = await pickOption(
+      context,
+      title: title,
+      options: options,
+      current: current,
     );
     if (choice != null) onSelected(choice);
   }
@@ -139,6 +157,14 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
           section: _section,
           year: _year,
           photoUrl: widget.child?.photoUrl,
+          grNumber: _grNumber.text.trim().isEmpty
+              ? null
+              : _grNumber.text.trim(),
+          rollNumber: _rollNumber.text.trim().isEmpty
+              ? null
+              : _rollNumber.text.trim(),
+          dateOfBirth: _dateOfBirth,
+          notes: _notes.text.trim(),
         ),
         photo: _photo,
       );
@@ -290,7 +316,9 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
                           value: _section,
                           onTap: () => _pick(
                             title: 'Section',
-                            options: const ['A', 'B', 'C', 'D'],
+                            options: const [
+                              'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+                            ],
                             current: _section,
                             onSelected: (v) => setState(() => _section = v),
                           ),
@@ -309,6 +337,51 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
                       onSelected: (v) => setState(() => _year = v),
                     ),
                   ),
+                  const SizedBox(height: 18),
+                  const HairLine(),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'More details',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AppTextField(
+                          label: 'GR number',
+                          controller: _grNumber,
+                          hintText: 'Optional',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: AppTextField(
+                          label: 'Roll number',
+                          controller: _rollNumber,
+                          hintText: 'Optional',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  PickerField(
+                    label: 'Date of birth',
+                    value: _dateOfBirth == null
+                        ? 'Optional'
+                        : AppDate.full(_dateOfBirth!),
+                    isPlaceholder: _dateOfBirth == null,
+                    trailing: PickerTrailing.calendar,
+                    onTap: _pickDateOfBirth,
+                  ),
+                  const SizedBox(height: 18),
+                  AppTextField(
+                    label: 'Notes',
+                    controller: _notes,
+                    hintText: 'Allergies, emergency contact, anything else',
+                    maxLines: 3,
+                    minHeight: 66,
+                  ),
                 ],
               ),
             ),
@@ -318,91 +391,6 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
                     ? 'Saving…'
                     : (_isEditing ? 'Save changes' : 'Continue'),
                 onPressed: _canSave ? _continue : null,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Simple single-choice sheet backing the class / section / year pickers.
-class _OptionSheet extends StatelessWidget {
-  const _OptionSheet({
-    required this.title,
-    required this.options,
-    required this.current,
-  });
-
-  final String title;
-  final List<String> options;
-  final String current;
-
-  @override
-  Widget build(BuildContext context) {
-    final k = context.t;
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 26),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: k.bd4,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: options.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final option = options[index];
-                  final selected = option == current;
-                  return AppCard(
-                    radius: 16,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                    background: selected ? k.priC : k.surf,
-                    borderColor: selected ? k.priFill : k.bd,
-                    onTap: () => Navigator.of(context).pop(option),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            option,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: selected ? k.priInk : k.tx,
-                            ),
-                          ),
-                        ),
-                        if (selected)
-                          StrokeIcon(AppIcons.check, size: 18, color: k.pri),
-                      ],
-                    ),
-                  );
-                },
               ),
             ),
           ],

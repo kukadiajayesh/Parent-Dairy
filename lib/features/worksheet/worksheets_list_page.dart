@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../../app/routes.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
-import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
@@ -217,6 +217,8 @@ class _WorksheetRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final k = context.t;
     final completed = record.status == WorksheetStatus.completed;
+    // The title is the chosen chapter, so the subtitle only needs the dates —
+    // repeating the chapter here would just echo the heading above it.
     final dates = completed && record.completedDate != null
         ? 'Given ${AppDate.short(record.date)} · done '
             '${AppDate.short(record.completedDate!)}'
@@ -226,54 +228,57 @@ class _WorksheetRow extends StatelessWidget {
     return AppCard(
       onTap: () => Navigator.of(context, rootNavigator: true)
           .pushNamed(Routes.worksheetDetail, arguments: record.id),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  record.title,
-                  style: const TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w600,
-                    height: 1.3,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    record.title,
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 5),
-                Text(dates, style: TextStyle(fontSize: 12.5, color: k.tx3)),
-                const SizedBox(height: 9),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    StatusPill(
-                      label: record.status.label,
-                      background: completed ? k.subSciC : k.warnC,
-                      foreground: completed ? k.subSciInk : k.warnInk,
-                      dotColor:
-                          completed ? const Color(0xFF3E8168) : k.warn,
-                    ),
-                    StatusPill(
-                      label: AppFormat.fileCount(record.fileCount),
-                      background: k.surf2,
-                      foreground: k.tx3,
-                    ),
-                  ],
-                ),
-              ],
+                  const SizedBox(height: 5),
+                  Text(dates, style: TextStyle(fontSize: 12.5, color: k.tx3)),
+                  const Spacer(),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      StatusPill(
+                        label: record.status.label,
+                        background: completed ? k.subSciC : k.warnC,
+                        foreground: completed ? k.subSciInk : k.warnInk,
+                        dotColor:
+                            completed ? const Color(0xFF3E8168) : k.warn,
+                      ),
+                      StatusPill(
+                        label: AppFormat.fileCount(record.fileCount),
+                        background: k.surf2,
+                        foreground: k.tx3,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 14),
-          const ImageSlot(
-            placeholder: '',
-            radius: 14,
-            width: 76,
-            height: 92,
-            showCaption: false,
-          ),
-        ],
+            const SizedBox(width: 14),
+            attachmentThumb(
+              context,
+              record.attachments.firstOrNull,
+              radius: 14,
+              width: 76,
+              height: 92,
+              showCaption: false,
+            ),
+          ],
+        ),
       ),
     );
   }

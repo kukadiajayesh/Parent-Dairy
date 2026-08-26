@@ -98,6 +98,7 @@ class Child {
     required this.year,
     this.id = '',
     this.photoUrl,
+    this.grNumber,
     this.rollNumber,
     this.dateOfBirth,
     this.notes = '',
@@ -115,6 +116,10 @@ class Child {
   final String year;
 
   final String? photoUrl;
+
+  /// School-assigned General Register number, distinct from the class roll
+  /// number.
+  final String? grNumber;
   final String? rollNumber;
   final DateTime? dateOfBirth;
   final String notes;
@@ -131,6 +136,7 @@ class Child {
     String? section,
     String? year,
     String? photoUrl,
+    String? grNumber,
     String? rollNumber,
     DateTime? dateOfBirth,
     String? notes,
@@ -143,6 +149,7 @@ class Child {
     section: section ?? this.section,
     year: year ?? this.year,
     photoUrl: photoUrl ?? this.photoUrl,
+    grNumber: grNumber ?? this.grNumber,
     rollNumber: rollNumber ?? this.rollNumber,
     dateOfBirth: dateOfBirth ?? this.dateOfBirth,
     notes: notes ?? this.notes,
@@ -201,14 +208,14 @@ class Attachment {
     required this.name,
     required this.meta,
     this.id = '',
-    this.isPdf = false,
+    bool isPdf = false,
     this.storagePath,
     this.downloadUrl,
     this.localPath,
     this.fileSize = 0,
     this.mimeType,
     this.sync = SyncState.synced,
-  });
+  }) : _isPdf = isPdf;
 
   final String id;
 
@@ -218,7 +225,11 @@ class Attachment {
   /// Caption under the thumbnail, e.g. `Page 1` or `1 page · 240 KB`.
   final String meta;
 
-  final bool isPdf;
+  final bool _isPdf;
+  bool get isPdf =>
+      _isPdf ||
+      name.toLowerCase().endsWith('.pdf') ||
+      (mimeType ?? '').toLowerCase().contains('pdf');
 
   /// Location in Firebase Storage. Null until the upload completes.
   final String? storagePath;
@@ -273,6 +284,7 @@ class DiaryRecord {
     this.academicYearId = '',
     this.dueDate,
     this.completedDate,
+    this.chapter = '',
     this.notes = '',
     this.status = WorksheetStatus.pending,
     this.attachments = const [],
@@ -306,6 +318,9 @@ class DiaryRecord {
   final DateTime date;
   final DateTime? dueDate;
   final DateTime? completedDate;
+
+  /// Optional chapter or unit the worksheet covers, e.g. `Chapter 4 — Fractions`.
+  final String chapter;
   final String notes;
   final WorksheetStatus status;
   final List<Attachment> attachments;
@@ -360,6 +375,7 @@ class DiaryRecord {
     DateTime? date,
     DateTime? dueDate,
     DateTime? completedDate,
+    String? chapter,
     String? notes,
     WorksheetStatus? status,
     List<Attachment>? attachments,
@@ -383,6 +399,7 @@ class DiaryRecord {
     completedDate: clearCompletedDate
         ? null
         : (completedDate ?? this.completedDate),
+    chapter: chapter ?? this.chapter,
     notes: notes ?? this.notes,
     status: status ?? this.status,
     attachments: attachments ?? this.attachments,

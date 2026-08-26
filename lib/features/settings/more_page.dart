@@ -4,12 +4,10 @@ import '../../app/routes.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/chips.dart';
-import '../../core/widgets/fields.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/sheets.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/services/notification_service.dart';
-import '../../core/services/prefs_service.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../states/design_states_page.dart';
@@ -26,43 +24,11 @@ class MorePage extends StatefulWidget {
 }
 
 class _MorePageState extends State<MorePage> {
-  late bool _notifications = PrefsService.instance.remindersEnabled;
   final NotificationService _notificationService = NotificationService.instance;
 
   void _push(Widget page) => Navigator.of(context).push(
         MaterialPageRoute<void>(builder: (_) => page),
       );
-
-  /// Turning reminders on asks for the permission at the moment it is needed,
-  /// and re-arms every pending worksheet; turning them off cancels the lot.
-  Future<void> _setReminders(bool value) async {
-    final state = AppScope.read(context);
-    setState(() => _notifications = value);
-    await PrefsService.instance.setRemindersEnabled(value);
-    await _notificationService.init();
-
-    if (!value) {
-      await _notificationService.cancelAll();
-      return;
-    }
-
-    final granted = await _notificationService.requestPermission();
-    if (!granted) {
-      if (!mounted) return;
-      setState(() => _notifications = false);
-      await PrefsService.instance.setRemindersEnabled(false);
-      if (!mounted) return;
-      AppToast.show(
-        context,
-        title: 'Notifications are blocked',
-        description: 'Allow notifications for this app in system settings.',
-        kind: ToastKind.warn,
-        actionLabel: 'OK',
-      );
-      return;
-    }
-    await _notificationService.resyncAll(state.pendingWorksheets);
-  }
 
   Future<void> _logout() async {
     final confirmed = await confirmDelete(
@@ -182,54 +148,6 @@ class _MorePageState extends State<MorePage> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  const SectionLabel('App'),
-                  const SizedBox(height: 10),
-                  SettingsGroup(
-                    children: [
-                      SettingsRow(
-                        label: 'Notifications',
-                        showChevron: false,
-                        subtitle: 'Worksheet due-date reminders',
-                        onTap: () => _setReminders(!_notifications),
-                        trailing: AppSwitch(
-                          value: _notifications,
-                          width: 48,
-                          height: 28,
-                          onChanged: _setReminders,
-                        ),
-                      ),
-                      SettingsRow(
-                        label: 'Theme',
-                        subtitle: state.themeLabel,
-                        showChevron: false,
-                        onTap: state.toggleTheme,
-                        trailing: AppSwitch(
-                          value: state.isDark,
-                          width: 48,
-                          height: 28,
-                          activeColor: k.priFill,
-                          onChanged: (_) => state.toggleTheme(),
-                        ),
-                      ),
-                      SettingsRow(
-                        label: 'Backup & sync',
-                        subtitle: _syncSubtitle(state),
-                        showChevron: false,
-                        // Tapping retries stranded uploads. The design's toggle
-                        // was a preview affordance; the real state comes from
-                        // the network and the upload queue.
-                        onTap: state.retrySync,
-                        trailing: StatusPill(
-                          label: state.syncLabel,
-                          background: _syncOk(state) ? k.secC : k.warnC,
-                          foreground: _syncOk(state) ? k.secInk : k.warnInk,
-                          dotColor: _syncOk(state) ? k.secFill : k.warn,
-                          fontSize: 11.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
                   const SectionLabel('Account'),
                   const SizedBox(height: 10),
                   SettingsGroup(
@@ -240,12 +158,6 @@ class _MorePageState extends State<MorePage> {
                         showChevron: false,
                         onTap: () {},
                       ),
-                      for (final label in const [
-                        'Privacy',
-                        'Terms',
-                        'Help & support',
-                      ])
-                        SettingsRow(label: label, onTap: () {}),
                       SettingsRow(
                         label: 'Logout',
                         labelColor: k.err,
@@ -279,15 +191,5 @@ class _MorePageState extends State<MorePage> {
         ),
       ),
     );
-  }
-
-  static bool _syncOk(AppState state) =>
-      !state.isOffline && !state.isSyncing && !state.hasFailedUploads;
-
-  static String _syncSubtitle(AppState state) {
-    if (state.isOffline) return 'Waiting for a connection';
-    if (state.isSyncing) return 'Uploading attachments…';
-    if (state.hasFailedUploads) return 'Tap to retry failed uploads';
-    return 'Everything is backed up to your Google account';
   }
 }

@@ -68,6 +68,7 @@ abstract final class Map$ {
     'section': c.section,
     'year': c.year,
     'photoUrl': c.photoUrl,
+    'grNumber': c.grNumber,
     'rollNumber': c.rollNumber,
     'dateOfBirth': c.dateOfBirth == null
         ? null
@@ -89,6 +90,7 @@ abstract final class Map$ {
       section: str(m['section']),
       year: str(m['year']),
       photoUrl: m['photoUrl'] as String?,
+      grNumber: m['grNumber'] as String?,
       rollNumber: m['rollNumber'] as String?,
       dateOfBirth: date(m['dateOfBirth']),
       notes: str(m['notes']),
@@ -129,18 +131,27 @@ abstract final class Map$ {
     'sync': a.sync.wire,
   };
 
-  static Attachment attachmentFrom(Map<String, dynamic> m) => Attachment(
-    id: str(m['id']),
-    name: str(m['name'], 'attachment'),
-    meta: str(m['meta']),
-    isPdf: flag(m['isPdf']),
-    storagePath: m['storagePath'] as String?,
-    downloadUrl: m['downloadUrl'] as String?,
-    localPath: m['localPath'] as String?,
-    fileSize: integer(m['fileSize']),
-    mimeType: m['mimeType'] as String?,
-    sync: SyncState.fromWire(m['sync'] as String?),
-  );
+  static Attachment attachmentFrom(Map<String, dynamic> m) {
+    final name = str(m['name'], 'attachment');
+    final mime = m['mimeType'] as String?;
+    final isPdf =
+        flag(m['isPdf']) ||
+        name.toLowerCase().endsWith('.pdf') ||
+        (mime ?? '').toLowerCase().contains('pdf');
+
+    return Attachment(
+      id: str(m['id']),
+      name: name,
+      meta: str(m['meta']),
+      isPdf: isPdf,
+      storagePath: m['storagePath'] as String?,
+      downloadUrl: m['downloadUrl'] as String?,
+      localPath: m['localPath'] as String?,
+      fileSize: integer(m['fileSize']),
+      mimeType: mime,
+      sync: SyncState.fromWire(m['sync'] as String?),
+    );
+  }
 
   static List<Attachment> attachmentsFrom(Object? value) {
     if (value is! List) return const [];
@@ -165,6 +176,7 @@ abstract final class Map$ {
     'completedDate': r.completedDate == null
         ? null
         : Timestamp.fromDate(r.completedDate!),
+    'chapter': r.chapter,
     'notes': r.notes,
     'status': r.status.wire,
     'attachments': [for (final a in r.attachments) attachmentToMap(a)],
@@ -192,6 +204,7 @@ abstract final class Map$ {
       date: date(m['date']) ?? DateTime.now(),
       dueDate: date(m['dueDate']),
       completedDate: date(m['completedDate']),
+      chapter: str(m['chapter']),
       notes: str(m['notes']),
       status: WorksheetStatus.fromWire(m['status'] as String?),
       attachments: attachmentsFrom(m['attachments']),

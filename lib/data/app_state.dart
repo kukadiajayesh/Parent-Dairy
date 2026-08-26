@@ -25,21 +25,24 @@ class TimelineFilter {
     this.subject = 'All',
     this.type = 'All',
     this.date = 'This week',
+    this.sortBy = 'Date',
   });
 
   final String subject;
   final String type;
   final String date;
+  final String sortBy;
 
-  String get summary => '$subject · $type · $date';
+  String get summary => '$subject · $type · $date · sorted by $sortBy';
 
-  bool get isDefault => subject == 'All' && type == 'All' && date == 'This week';
+  bool get isDefault => subject == 'All' && type == 'All' && date == 'This week' && sortBy == 'Date';
 
-  TimelineFilter copyWith({String? subject, String? type, String? date}) =>
+  TimelineFilter copyWith({String? subject, String? type, String? date, String? sortBy}) =>
       TimelineFilter(
         subject: subject ?? this.subject,
         type: type ?? this.type,
         date: date ?? this.date,
+        sortBy: sortBy ?? this.sortBy,
       );
 }
 
@@ -99,7 +102,6 @@ class AppState extends ChangeNotifier {
   /// Wires connectivity and the auth listener. Called once from `main`, after
   /// `Firebase.initializeApp`.
   Future<void> bootstrap() async {
-    _dark = PrefsService.instance.isDark;
     await _connectivity.start();
     _authSub = _auth.authStateChanges().listen(_onUserChanged);
     // authStateChanges fires immediately with the restored session, but a cold
@@ -286,15 +288,8 @@ class AppState extends ChangeNotifier {
   }
 
   // ── Theme ────────────────────────────────────────────────────────────────
-  bool _dark = false;
-  bool get isDark => _dark;
-  ThemeMode get themeMode => _dark ? ThemeMode.dark : ThemeMode.light;
-  String get themeLabel => _dark ? 'Dark' : 'Light';
-  void toggleTheme() {
-    _dark = !_dark;
-    unawaited(PrefsService.instance.setDark(_dark));
-    notifyListeners();
-  }
+  /// Always follows the device's own setting — there is no in-app override.
+  ThemeMode get themeMode => ThemeMode.system;
 
   // ── Child / year selection ───────────────────────────────────────────────
   List<Child> _children = const [];

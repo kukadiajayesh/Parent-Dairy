@@ -85,6 +85,13 @@ class _FilterSheetBodyState extends State<_FilterSheetBody> {
             selected: _draft.date,
             onSelected: (v) => setState(() => _draft = _draft.copyWith(date: v)),
           ),
+          const SizedBox(height: 16),
+          _Group(
+            label: 'Sort by',
+            options: const ['Date', 'Chapter'],
+            selected: _draft.sortBy,
+            onSelected: (v) => setState(() => _draft = _draft.copyWith(sortBy: v)),
+          ),
           const SizedBox(height: 18),
           Row(
             children: [

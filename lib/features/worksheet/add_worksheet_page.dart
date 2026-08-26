@@ -9,8 +9,8 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
-import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/sheets.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
@@ -32,12 +32,19 @@ class AddWorksheetPage extends StatefulWidget {
 }
 
 class _AddWorksheetPageState extends State<AddWorksheetPage> {
-  late final TextEditingController _title =
-      TextEditingController(text: widget.existing?.title ?? '');
+  /// Chapters 1–50. With no free-text title field, the chosen chapter also
+  /// stands in for the record's title.
+  static final List<String> _chapterOptions = [
+    for (var i = 1; i <= 50; i++) 'Chapter $i',
+  ];
+
   late final TextEditingController _notes =
       TextEditingController(text: widget.existing?.notes ?? '');
 
   String? _subject;
+  late String? _chapter = (widget.existing?.chapter ?? '').isEmpty
+      ? null
+      : widget.existing!.chapter;
 
   /// §37: today, not a fixed sample date — a parent recording a worksheet is
   /// almost always recording today's.
@@ -52,8 +59,7 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
   bool _saving = false;
 
   bool get _isEditing => widget.existing != null;
-  bool get _canSave =>
-      !_saving && _title.text.trim().isNotEmpty && _subject != null;
+  bool get _canSave => !_saving && _chapter != null && _subject != null;
 
   @override
   void didChangeDependencies() {
@@ -67,7 +73,6 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
 
   @override
   void dispose() {
-    _title.dispose();
     _notes.dispose();
     super.dispose();
   }
@@ -129,6 +134,16 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
     });
   }
 
+  Future<void> _pickChapter() async {
+    final choice = await pickOption(
+      context,
+      title: 'Chapter',
+      options: _chapterOptions,
+      current: _chapter ?? '',
+    );
+    if (choice != null) setState(() => _chapter = choice);
+  }
+
   Future<void> _save() async {
     if (!_canSave) return;
     setState(() => _saving = true);
@@ -137,6 +152,7 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final subject = _subject!;
+    final chapter = _chapter!;
 
     final record = DiaryRecord(
       // Empty id means "create"; the repository assigns the Firestore id.
@@ -145,12 +161,14 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
       academicYearId: widget.existing?.academicYearId ?? state.activeYear,
       type: RecordType.worksheet,
       subject: subject,
-      title: _title.text.trim(),
+      // No free-text title field — the chapter identifies the worksheet.
+      title: chapter,
       date: _date,
       dueDate: _dueDate,
       completedDate: _status == WorksheetStatus.completed
           ? (widget.existing?.completedDate ?? DateTime.now())
           : null,
+      chapter: chapter,
       notes: _notes.text.trim(),
       status: _status,
       attachments: _attachments,
@@ -214,11 +232,11 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  AppTextField(
-                    label: 'Worksheet title',
-                    controller: _title,
-                    hintText: 'Fractions Practice',
-                    onChanged: (_) => setState(() {}),
+                  PickerField(
+                    label: 'Chapter',
+                    value: _chapter ?? 'Select a chapter',
+                    isPlaceholder: _chapter == null,
+                    onTap: _pickChapter,
                   ),
                   const SizedBox(height: 18),
                   Row(
@@ -427,13 +445,7 @@ class _AttachmentGrid extends StatelessWidget {
           Stack(
             fit: StackFit.expand,
             children: [
-              ImageSlot(
-                placeholder: attachments[i].isPdf
-                    ? attachments[i].name
-                    : attachments[i].meta,
-                image: attachmentImage(attachments[i]),
-                radius: 14,
-              ),
+              attachmentThumb(context, attachments[i], radius: 14),
               Positioned(
                 top: 6,
                 right: 6,
@@ -488,32 +500,13 @@ class _AnswerKeyRow extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       child: Row(
         children: [
-          Container(
+          attachmentThumb(
+            context,
+            attachment,
+            radius: 12,
             width: 52,
             height: 52,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: k.surf2,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: attachment.isPdf
-                ? Text(
-                    'PDF',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: k.tx3,
-                    ),
-                  )
-                : ImageSlot(
-                    image: attachmentImage(attachment),
-                    placeholder: '',
-                    showCaption: false,
-                    radius: 12,
-                    width: 52,
-                    height: 52,
-                  ),
+            showCaption: false,
           ),
           const SizedBox(width: 12),
           Expanded(

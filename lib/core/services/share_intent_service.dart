@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'image_service.dart';
@@ -74,9 +75,18 @@ class ShareIntentService {
         if (size > ImageService.maxFileBytes) continue;
 
         if (isPdf) {
+          final tempDir = await getTemporaryDirectory();
+          final targetFolder = Directory('${tempDir.path}/attachments');
+          if (!await targetFolder.exists()) {
+            await targetFolder.create(recursive: true);
+          }
+          final safeName = '${DateTime.now().millisecondsSinceEpoch}_$name';
+          final localCopy = File('${targetFolder.path}/$safeName');
+          await file.copy(localCopy.path);
+
           usable.add(
             PickedAttachment(
-              path: item.path,
+              path: localCopy.path,
               name: name,
               bytes: size,
               isPdf: true,

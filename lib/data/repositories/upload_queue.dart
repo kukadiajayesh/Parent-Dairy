@@ -34,6 +34,10 @@ class UploadQueue extends ChangeNotifier {
   final RecordRepository _records;
   final ValueListenable<bool> _offline;
 
+  /// Attempts per record before its files are reported as failed. Three passes
+  /// covers a flaky connection without hammering a genuinely broken upload.
+  static const int maxAttempts = 3;
+
   final Queue<_Job> _jobs = Queue<_Job>();
   final Set<String> _queuedRecordIds = <String>{};
 
@@ -102,7 +106,10 @@ class UploadQueue extends ChangeNotifier {
     while (_jobs.isNotEmpty && !_offline.value) {
       final job = _jobs.removeFirst();
       try {
-        await _process(job);
+        // A failed *upload* does not throw — it comes back as a flag, because
+        // the record still has to be written with its files marked. Only a
+        // Firestore write failure reaches the catch below.
+        if (await _process(job)) sawFailure = true;
       } catch (_) {
         sawFailure = true;
       } finally {
@@ -128,7 +135,10 @@ class UploadQueue extends ChangeNotifier {
     _reset();
   }
 
-  Future<void> _process(_Job job) async {
+  /// Uploads a job's files. Returns true when at least one of them ended in a
+  /// state the queue will not retry — the caller turns that into
+  /// [QueueStatus.failed].
+  Future<bool> _process(_Job job) async {
     final record = job.record;
 
     Future<Attachment> send(Attachment attachment) async {
@@ -173,14 +183,20 @@ class UploadQueue extends ChangeNotifier {
       answerKey: key,
     );
 
-    // Anything still pending lost its network rather than its file — requeue so
-    // the next drain picks it up instead of stranding it.
     final settled = record.copyWith(attachments: uploaded, answerKey: key);
-    if (settled.sync == SyncState.pending) {
-      _jobs.add(_Job(uid: job.uid, childId: job.childId, record: settled));
+
+    // Anything still pending lost its network rather than its file — requeue so
+    // the next drain picks it up instead of stranding it. Bounded, so a file
+    // that fails every time does not spin the queue indefinitely; once the
+    // attempts run out it is reported as failed and left for an explicit retry.
+    if (settled.sync == SyncState.pending && job.attempt < maxAttempts) {
+      _jobs.add(job.next(settled));
       _queuedRecordIds.add(settled.id);
       _total += 1;
+      return false;
     }
+
+    return settled.sync != SyncState.synced;
   }
 
   void _reset() {
@@ -203,9 +219,25 @@ class UploadQueue extends ChangeNotifier {
 }
 
 class _Job {
-  const _Job({required this.uid, required this.childId, required this.record});
+  const _Job({
+    required this.uid,
+    required this.childId,
+    required this.record,
+    this.attempt = 1,
+  });
 
   final String uid;
   final String childId;
   final DiaryRecord record;
+
+  /// How many times this record's files have been tried. Bounds the retry
+  /// loop so a file that keeps failing cannot spin forever.
+  final int attempt;
+
+  _Job next(DiaryRecord updated) => _Job(
+    uid: uid,
+    childId: childId,
+    record: updated,
+    attempt: attempt + 1,
+  );
 }

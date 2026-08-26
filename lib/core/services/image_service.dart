@@ -121,9 +121,19 @@ abstract final class ImageService {
         if (ext == 'pdf') {
           final size = await File(path).length();
           _guardSize(size);
+
+          final tempDir = await getTemporaryDirectory();
+          final targetFolder = Directory('${tempDir.path}/attachments');
+          if (!await targetFolder.exists()) {
+            await targetFolder.create(recursive: true);
+          }
+          final safeName = '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
+          final localCopy = File('${targetFolder.path}/$safeName');
+          await File(path).copy(localCopy.path);
+
           out.add(
             PickedAttachment(
-              path: path,
+              path: localCopy.path,
               name: picked.name,
               bytes: size,
               isPdf: true,

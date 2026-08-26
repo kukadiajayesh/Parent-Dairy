@@ -5,6 +5,7 @@ import '../../core/config/feature_flags.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
@@ -568,7 +569,16 @@ class _RecentRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          SubjectBadge(abbr: subject.abbr, hue: subject.hue),
+          record.attachments.isNotEmpty || record.answerKey != null
+              ? attachmentThumb(
+                  context,
+                  record.attachments.firstOrNull ?? record.answerKey,
+                  radius: 12,
+                  width: 38,
+                  height: 38,
+                  showCaption: false,
+                )
+              : SubjectBadge(abbr: subject.abbr, hue: subject.hue),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -598,7 +608,7 @@ class _RecentRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  record.title,
+                  '${record.subject} · ${record.title}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(

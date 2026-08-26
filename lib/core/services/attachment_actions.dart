@@ -24,7 +24,10 @@ abstract final class AttachmentActions {
       if (await existing.exists()) return existing;
     }
 
-    if (attachment.storagePath == null) {
+    final hasStorage = attachment.storagePath != null && attachment.storagePath!.isNotEmpty;
+    final hasUrl = attachment.downloadUrl != null && attachment.downloadUrl!.isNotEmpty;
+
+    if (!hasStorage && !hasUrl) {
       throw const AppFailure(
         FailureKind.notFound,
         'That file has not finished uploading yet.',
@@ -33,9 +36,19 @@ abstract final class AttachmentActions {
     }
 
     final cache = await getTemporaryDirectory();
-    final target = File(
-      '${cache.path}/attachments/${attachment.id}_${attachment.name}',
-    );
+    final targetFolder = Directory('${cache.path}/attachments');
+    if (!await targetFolder.exists()) {
+      await targetFolder.create(recursive: true);
+    }
+
+    final id = attachment.id.isNotEmpty
+        ? attachment.id
+        : (attachment.storagePath?.hashCode.toString() ??
+            attachment.downloadUrl?.hashCode.toString() ??
+            attachment.name.hashCode.toString());
+    final safeName = attachment.name.isNotEmpty ? attachment.name : 'document.pdf';
+    final target = File('${targetFolder.path}/${id}_$safeName');
+
     final downloaded = await _repo.download(attachment, target: target);
     if (downloaded == null) {
       throw const AppFailure(

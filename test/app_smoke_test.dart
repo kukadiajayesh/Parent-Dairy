@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +10,7 @@ import 'package:parent_academic_diary/core/config/feature_flags.dart';
 import 'package:parent_academic_diary/core/services/connectivity_service.dart';
 import 'package:parent_academic_diary/core/services/prefs_service.dart';
 import 'package:parent_academic_diary/core/theme/app_theme.dart';
+import 'package:parent_academic_diary/core/widgets/image_slot.dart';
 import 'package:parent_academic_diary/data/app_state.dart';
 import 'package:parent_academic_diary/data/firestore_paths.dart';
 import 'package:parent_academic_diary/data/models.dart';
@@ -156,18 +160,14 @@ void main() {
     expect(find.text('LATEST MARKS'), findsNothing);
   });
 
-  testWidgets('add sheet offers worksheet and classwork only', (tester) async {
+  testWidgets('home screen offers quick actions for worksheet, classwork and image', (tester) async {
     await pumpShell(tester);
 
-    await tester.tap(find.widgetWithText(FloatingActionButton, 'Add'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Add to diary'), findsOneWidget);
-    expect(find.text('From Image'), findsOneWidget);
-    expect(find.text('Save a worksheet or homework'), findsOneWidget);
-    expect(find.text('Save classwork photos'), findsOneWidget);
-    expect(find.text('Add an exam/test'), findsNothing);
-    expect(find.text('Record exam marks'), findsNothing);
+    expect(find.text('Worksheet'), findsWidgets);
+    expect(find.text('Classwork'), findsWidgets);
+    expect(find.text('Add from Image'), findsOneWidget);
+    expect(find.text('Exam'), findsNothing);
+    expect(find.text('Marks'), findsNothing);
   });
 
   testWidgets('saving a worksheet puts it on the timeline', (tester) async {
@@ -177,7 +177,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Add Worksheet'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField).first, 'Long division set 2');
+    // There is no free-text title anymore — the chosen chapter (1–50) stands
+    // in for it.
+    await tester.tap(find.text('Select a chapter'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chapter 7'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Save Worksheet'));
@@ -187,7 +191,30 @@ void main() {
 
     await tester.tap(find.text('Timeline'));
     await tester.pumpAndSettle();
-    expect(find.text('Long division set 2'), findsOneWidget);
+    expect(find.textContaining('Chapter 7'), findsWidgets);
+  });
+
+  testWidgets('saving a classwork puts it on the timeline', (tester) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('Classwork').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Add Classwork'), findsOneWidget);
+
+    // Chapter selection replaces free-text title field
+    await tester.tap(find.text('Select a chapter'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chapter 8'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Save Classwork'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => _settle(12));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Timeline'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Chapter 8'), findsWidgets);
   });
 
   testWidgets('a new worksheet defaults to today, not a sample date',
@@ -226,7 +253,33 @@ void main() {
     expect(find.text('Marks'), findsNothing);
   });
 
-  testWidgets('more screen shows the Google account and toggles dark theme',
+  testWidgets('timeline filter sheet allows subject filter and chapter sorting',
+      (tester) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('Timeline'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Filter'));
+    await tester.pumpAndSettle();
+
+    // Select subject "Mathematics"
+    await tester.tap(find.text('Mathematics').last);
+    await tester.pumpAndSettle();
+
+    // Select sort by "Chapter"
+    await tester.tap(find.text('Chapter').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+
+    // Check that state filter has been updated
+    expect(state.filter.subject, 'Mathematics');
+    expect(state.filter.sortBy, 'Chapter');
+  });
+
+  testWidgets('more screen shows the Google account and hides removed rows',
       (tester) async {
     await pumpShell(tester);
 
@@ -239,14 +292,14 @@ void main() {
     expect(find.text('Academic years'), findsOneWidget);
     expect(find.text('Subjects'), findsOneWidget);
 
-    await tester.tap(find.text('Theme'));
-    await tester.pumpAndSettle();
-    expect(find.text('Dark'), findsOneWidget);
-
-    // Everything must still build under the dark palette.
-    await tester.tap(find.text('Home'));
-    await tester.pumpAndSettle();
-    expect(find.text('QUICK ACTIONS'), findsOneWidget);
+    // Theme, Notifications and Backup & sync have no settings row anymore —
+    // theme follows the system and reminders are simply always on.
+    expect(find.text('Theme'), findsNothing);
+    expect(find.text('Notifications'), findsNothing);
+    expect(find.text('Backup & sync'), findsNothing);
+    expect(find.text('Privacy'), findsNothing);
+    expect(find.text('Terms'), findsNothing);
+    expect(find.text('Help & support'), findsNothing);
   });
 
   testWidgets('worksheet detail marks completed and back again',
@@ -292,6 +345,79 @@ void main() {
     expect(find.text('Record deleted'), findsOneWidget);
     // Soft delete (§30) makes Undo a restore rather than a re-create.
     expect(find.text('Undo'), findsOneWidget);
+  });
+
+  testWidgets('browse surfaces show the attachment, not a placeholder',
+      (tester) async {
+    // Regression: the detail screens, forms, picker and viewer were wired to
+    // render real attachments, but the timeline card and the list/subject
+    // thumbnails still built a bare ImageSlot. Every browsing surface showed a
+    // dashed "Photo" placeholder even for records whose upload had completed,
+    // which reads on device exactly like a broken sync.
+    final png = File('${Directory.systemTemp.path}/diary_test_page.png')
+      ..writeAsBytesSync(
+        base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8'
+          'z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        ),
+      );
+    addTearDown(() {
+      if (png.existsSync()) png.deleteSync();
+    });
+
+    await seed(tester);
+    await tester.runAsync(() async {
+      await state.saveRecord(
+        DiaryRecord(
+          id: '',
+          academicYearId: '2026–27',
+          type: RecordType.worksheet,
+          subject: 'Mathematics',
+          title: 'Has a photo',
+          date: DateTime(2026, 8, 23),
+          attachments: [
+            Attachment(
+              id: 'att-1',
+              name: 'page-1.png',
+              meta: 'Page 1',
+              localPath: png.path,
+              sync: SyncState.synced,
+            ),
+          ],
+        ),
+      );
+      await _settle(14);
+    });
+
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.625;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: ListenableBuilder(
+          listenable: state,
+          builder: (context, _) => MaterialApp(
+            theme: AppTheme.light(),
+            onGenerateRoute: Routes.onGenerateRoute,
+            home: const MainShell(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Timeline'));
+    await tester.pumpAndSettle();
+
+    final slots = tester
+        .widgetList<ImageSlot>(find.byType(ImageSlot))
+        .where((slot) => slot.image != null);
+    expect(
+      slots,
+      isNotEmpty,
+      reason: 'the timeline card must render the attachment it has',
+    );
   });
 
   testWidgets('the loading skeletons fit a real phone width', (tester) async {

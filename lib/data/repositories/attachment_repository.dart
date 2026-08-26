@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/errors/app_failure.dart';
@@ -174,13 +175,40 @@ class AttachmentRepository {
   /// Caches a remote attachment locally so the viewer can open it offline and
   /// share it without a second download.
   Future<File?> download(Attachment attachment, {required File target}) async {
-    final path = attachment.storagePath;
-    if (path == null || path.isEmpty) return null;
     try {
       if (await target.exists()) return target;
       await target.parent.create(recursive: true);
-      await _storage.ref(path).writeToFile(target);
-      return target;
+
+      final path = attachment.storagePath;
+      if (path != null && path.isNotEmpty) {
+        try {
+          await _storage.ref(path).writeToFile(target);
+          return target;
+        } catch (_) {
+          // If storage reference download fails, attempt fallback to downloadUrl.
+        }
+      }
+
+      final url = attachment.downloadUrl;
+      if (url != null && url.isNotEmpty) {
+        final client = HttpClient();
+        try {
+          final uri = Uri.tryParse(url);
+          if (uri != null) {
+            final request = await client.getUrl(uri);
+            final response = await request.close();
+            if (response.statusCode == 200) {
+              final bytes = await consolidateHttpClientResponseBytes(response);
+              await target.writeAsBytes(bytes);
+              return target;
+            }
+          }
+        } finally {
+          client.close();
+        }
+      }
+
+      return null;
     } catch (error) {
       throw AppFailure.from(error);
     }

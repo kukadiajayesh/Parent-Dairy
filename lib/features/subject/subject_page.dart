@@ -4,9 +4,9 @@ import '../../app/routes.dart';
 import '../../core/config/feature_flags.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/chips.dart';
-import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
@@ -370,8 +370,9 @@ class _RecordList extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const ImageSlot(
-                  placeholder: '',
+                attachmentThumb(
+                  context,
+                  record.attachments.firstOrNull ?? record.answerKey,
                   radius: 12,
                   width: 52,
                   height: 52,

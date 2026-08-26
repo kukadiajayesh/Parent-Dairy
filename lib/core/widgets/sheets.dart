@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_tokens.dart';
 import 'app_icons.dart';
 import 'buttons.dart';
+import 'layout.dart';
 import 'stroke_icon.dart';
 
 /// Rounded modal sheet with the design's grab handle and 19/800 title.
@@ -69,6 +70,74 @@ class _GrabHandle extends StatelessWidget {
           color: k.bd4,
           borderRadius: BorderRadius.circular(999),
         ),
+      ),
+    );
+  }
+}
+
+/// Opens a single-choice bottom sheet listing [options] and returns the one
+/// picked, or `null` if dismissed without choosing — the class/section/year
+/// picker pattern used by child and worksheet forms.
+Future<String?> pickOption(
+  BuildContext context, {
+  required String title,
+  required List<String> options,
+  required String current,
+}) {
+  return AppSheet.show<String>(
+    context,
+    (sheetContext) => AppSheet(
+      title: title,
+      child: Column(
+        children: [
+          for (var i = 0; i < options.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            _OptionTile(
+              label: options[i],
+              selected: options[i] == current,
+              onTap: () => Navigator.of(sheetContext).pop(options[i]),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+class _OptionTile extends StatelessWidget {
+  const _OptionTile({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.t;
+    return AppCard(
+      radius: 16,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      background: selected ? k.priC : k.surf,
+      borderColor: selected ? k.priFill : k.bd,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: selected ? k.priInk : k.tx,
+              ),
+            ),
+          ),
+          if (selected) StrokeIcon(AppIcons.check, size: 18, color: k.pri),
+        ],
       ),
     );
   }

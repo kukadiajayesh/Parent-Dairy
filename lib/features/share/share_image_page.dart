@@ -11,6 +11,7 @@ import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
 import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/sheets.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
@@ -44,11 +45,15 @@ class ShareImagePage extends StatefulWidget {
 }
 
 class _ShareImagePageState extends State<ShareImagePage> {
-  final TextEditingController _title = TextEditingController();
+  static final List<String> _chapterOptions = [
+    for (var i = 1; i <= 50; i++) 'Chapter $i',
+  ];
+
   final TextEditingController _notes = TextEditingController();
 
   RecordType _type = RecordType.worksheet;
   String? _subject;
+  String? _chapter;
   DateTime _date = DateUtils.dateOnly(DateTime.now());
   DateTime? _dueDate;
   Attachment? _answerKey;
@@ -68,7 +73,8 @@ class _ShareImagePageState extends State<ShareImagePage> {
 
   bool get _isWorksheet => _type == RecordType.worksheet;
   bool get _hasAnswerKey => _answerKey != null;
-  bool get _canSave => !_saving && _subject != null && _files.isNotEmpty;
+  bool get _canSave =>
+      !_saving && _subject != null && _chapter != null && _files.isNotEmpty;
 
   @override
   void didChangeDependencies() {
@@ -80,9 +86,18 @@ class _ShareImagePageState extends State<ShareImagePage> {
 
   @override
   void dispose() {
-    _title.dispose();
     _notes.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickChapter() async {
+    final choice = await pickOption(
+      context,
+      title: 'Chapter',
+      options: _chapterOptions,
+      current: _chapter ?? '',
+    );
+    if (choice != null) setState(() => _chapter = choice);
   }
 
   Future<void> _pickAnswerKey() async {
@@ -111,18 +126,17 @@ class _ShareImagePageState extends State<ShareImagePage> {
     final state = AppScope.read(context);
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final title = _title.text.trim();
+    final chapter = _chapter!;
 
     final record = DiaryRecord(
       id: '',
       academicYearId: state.activeYear,
       type: _type,
       subject: _subject!,
-      title: title.isEmpty
-          ? (_isWorksheet ? 'Shared worksheet' : 'Shared classwork')
-          : title,
+      title: chapter,
       date: _date,
       dueDate: _isWorksheet ? _dueDate : null,
+      chapter: chapter,
       notes: _isWorksheet ? '' : _notes.text.trim(),
       attachments: _files,
       answerKey: _isWorksheet ? _answerKey : null,
@@ -136,7 +150,7 @@ class _ShareImagePageState extends State<ShareImagePage> {
         // The files are spent; what carries over is the context a parent
         // filing a batch would otherwise re-enter every time.
         setState(() {
-          _title.clear();
+          _chapter = null;
           _notes.clear();
           _dueDate = null;
           _answerKey = null;
@@ -191,17 +205,18 @@ class _ShareImagePageState extends State<ShareImagePage> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                 children: [
-                  ImageSlot(
-                    key: ValueKey(_files.isEmpty ? '' : _files[_preview].id),
-                    placeholder: _files.isEmpty
-                        ? 'No image shared'
-                        : _files[_preview].name,
-                    image: _files.isEmpty
-                        ? null
-                        : attachmentImage(_files[_preview]),
-                    radius: 20,
-                    height: 250,
-                  ),
+                  _files.isEmpty
+                      ? const ImageSlot(
+                          placeholder: 'No image shared',
+                          radius: 20,
+                          height: 250,
+                        )
+                      : attachmentThumb(
+                          context,
+                          _files[_preview],
+                          radius: 20,
+                          height: 250,
+                        ),
                   if (_files.length > 1) ...[
                     const SizedBox(height: 10),
                     _SharedFileStrip(
@@ -239,10 +254,11 @@ class _ShareImagePageState extends State<ShareImagePage> {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  AppTextField(
-                    label: 'Title',
-                    controller: _title,
-                    hintText: 'Optional — e.g. Fractions Practice',
+                  PickerField(
+                    label: 'Chapter',
+                    value: _chapter ?? 'Select a chapter',
+                    isPlaceholder: _chapter == null,
+                    onTap: _pickChapter,
                   ),
                   const SizedBox(height: 14),
                   Row(
@@ -301,20 +317,29 @@ class _ShareImagePageState extends State<ShareImagePage> {
                       onTap: _pickAnswerKey,
                       child: Row(
                         children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: k.surf2,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: StrokeIcon(
-                              _hasAnswerKey ? AppIcons.check : AppIcons.plus,
-                              size: 19,
-                              color: _hasAnswerKey ? k.sec : k.tx3,
-                            ),
-                          ),
+                          _hasAnswerKey
+                              ? attachmentThumb(
+                                  context,
+                                  _answerKey,
+                                  radius: 12,
+                                  width: 40,
+                                  height: 40,
+                                  showCaption: false,
+                                )
+                              : Container(
+                                  width: 40,
+                                  height: 40,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: k.surf2,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: StrokeIcon(
+                                    AppIcons.plus,
+                                    size: 19,
+                                    color: k.tx3,
+                                  ),
+                                ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -516,11 +541,7 @@ class _SharedFileStrip extends StatelessWidget {
                         width: 2,
                       ),
                     ),
-                    child: ImageSlot(
-                      placeholder: file.isPdf ? 'PDF' : '${index + 1}',
-                      image: attachmentImage(file),
-                      radius: 12,
-                    ),
+                    child: attachmentThumb(context, file, radius: 12),
                   ),
                   Positioned(
                     top: 2,

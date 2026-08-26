@@ -8,7 +8,6 @@ import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
-import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/sheets.dart';
 import '../../core/widgets/states.dart';
@@ -64,13 +63,27 @@ class ClassworkDetailPage extends StatelessWidget {
       }
     }
 
-    void openViewer(int index) => Navigator.of(context).pushNamed(
-          Routes.viewer,
-          arguments: ViewerArgs(
-            attachments: record.attachments,
-            initialIndex: index,
-          ),
-        );
+    Future<void> openAttachment(int index) async {
+      final attachment = record.attachments[index];
+      if (attachment.isPdf) {
+        try {
+          await AttachmentActions.open(attachment);
+        } catch (error) {
+          if (!context.mounted) return;
+          AppToast.failure(context, error, title: "Couldn't open file");
+        }
+        return;
+      }
+      final imagesOnly = record.attachments.where((f) => !f.isPdf).toList();
+      final newIndex = imagesOnly.indexOf(attachment);
+      Navigator.of(context).pushNamed(
+        Routes.viewer,
+        arguments: ViewerArgs(
+          attachments: imagesOnly,
+          initialIndex: newIndex >= 0 ? newIndex : 0,
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: k.bg,
@@ -160,18 +173,16 @@ class ClassworkDetailPage extends StatelessWidget {
                     childAspectRatio: 1,
                     children: [
                       for (var i = 0; i < record.attachments.length; i++)
-                        ImageSlot(
-                          placeholder: record.attachments[i].isPdf
-                              ? record.attachments[i].name
-                              : record.attachments[i].meta,
-                          image: attachmentImage(record.attachments[i]),
+                        attachmentThumb(
+                          context,
+                          record.attachments[i],
                           radius: 16,
-                          onTap: () => openViewer(i),
+                          onTap: () => openAttachment(i),
                         ),
                       InkWell(
                         onTap: record.attachments.isEmpty
                             ? null
-                            : () => openViewer(0),
+                            : () => openAttachment(0),
                         borderRadius: BorderRadius.circular(16),
                         child: DashedContainer(
                           radius: 16,

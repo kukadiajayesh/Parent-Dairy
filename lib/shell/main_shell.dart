@@ -7,7 +7,6 @@ import '../core/widgets/stroke_icon.dart';
 import '../features/home/home_page.dart';
 import '../features/settings/more_page.dart';
 import '../features/timeline/timeline_page.dart';
-import 'add_sheet.dart';
 import 'shell_scope.dart';
 
 /// The three-tab frame the design keeps behind most screens. Each tab owns a
@@ -87,9 +86,6 @@ class _MainShellState extends State<MainShell> {
                 ),
             ],
           ),
-          floatingActionButton: _AddFab(
-            onPressed: () => AddSheet.show(context),
-          ),
           bottomNavigationBar: _BottomBar(
             tabs: _tabs,
             index: _index,
@@ -106,58 +102,6 @@ class _TabSpec {
   final String id;
   final String label;
   final SvgIcon icon;
-}
-
-/// Extended FAB pinned above the bottom bar — `ui.add` in the design.
-class _AddFab extends StatelessWidget {
-  const _AddFab({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final k = context.t;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          // The design tints the FAB shadow with its own green rather than
-          // taking Material's opaque black elevation shadow.
-          boxShadow: [
-            BoxShadow(
-              color: k.secFill.withValues(alpha: .32),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: FloatingActionButton.extended(
-          onPressed: onPressed,
-          backgroundColor: k.secFill,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          focusElevation: 0,
-          hoverElevation: 0,
-          highlightElevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          extendedPadding: const EdgeInsets.symmetric(horizontal: 22),
-          icon: const StrokeIcon(
-            AppIcons.plus,
-            size: 20,
-            color: Colors.white,
-            strokeWidth: 2.2,
-          ),
-          label: const Text(
-            'Add',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _BottomBar extends StatelessWidget {

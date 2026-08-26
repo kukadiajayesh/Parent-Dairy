@@ -142,7 +142,7 @@ cannot start.
 flutter test
 ```
 
-78 tests, no network:
+86 tests, no network:
 
 | File | Covers |
 | --- | --- |
@@ -150,7 +150,13 @@ flutter test
 | `mappers_test.dart` | Firestore round trip, defensive reads of partial documents, search terms |
 | `record_repository_test.dart` | save/update, §31 validation, year scoping, soft delete, search, subject and year repos |
 | `app_state_test.dart` | auth gating, first-child seeding, record lifecycle, year switching, offline banner |
-| `app_smoke_test.dart` | the real screens over a fake Firestore, including that no exam or marks surface is reachable |
+| `upload_queue_test.dart` | a failed upload reports `failed` rather than idle, bounded retries, offline waiting |
+| `app_smoke_test.dart` | the real screens over a fake Firestore: no exam or marks surface reachable, browse thumbnails render their attachment, and the skeletons fit a real phone width |
+
+Two of those exist because the first device run found what the suite had missed.
+The viewport is pinned to 411.4dp — at the 432dp it used to use, a horizontal
+overflow fit exactly and stayed invisible — and the skeleton test switches tabs,
+because opening a screen only ever builds its first `TabBarView` child.
 
 Firebase is faked with `fake_cloud_firestore` and `firebase_auth_mocks`;
 `Paths.db` is the seam. Note that `testWidgets` fakes the clock, so anything

@@ -8,7 +8,6 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
-import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import 'attachment_source_row.dart';
@@ -186,17 +185,11 @@ class _PickerPageState extends State<PickerPage> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      ImageSlot(
-                        key: ValueKey(current?.path ?? 'empty'),
-                        placeholder: _shots.isEmpty
-                            ? 'No photos yet'
-                            : (current?.isPdf ?? false
-                                  ? current!.name
-                                  : 'Captured photo preview'),
-                        image: fileImage(
-                          (current?.isPdf ?? true) ? null : current?.path,
-                        ),
+                      pickedAttachmentThumb(
+                        context,
+                        current,
                         radius: 18,
+                        showCaption: false,
                       ),
                       if (_busy)
                         const ColoredBox(
@@ -253,12 +246,13 @@ class _PickerPageState extends State<PickerPage> {
                             width: 2,
                           ),
                         ),
-                        child: ImageSlot(
-                          placeholder: shot.isPdf ? 'PDF' : '${index + 1}',
-                          image: fileImage(shot.isPdf ? null : shot.path),
+                        child: pickedAttachmentThumb(
+                          context,
+                          shot,
                           radius: 12,
                           width: 64,
                           height: 64,
+                          showCaption: false,
                         ),
                       ),
                     );
@@ -328,15 +322,17 @@ class _PickerPageState extends State<PickerPage> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    AppTonalButton(
-                      label: 'Files',
-                      height: 50,
-                      fontSize: 14.5,
-                      borderRadius: 15,
-                      background: _chip,
-                      hoverBackground: const Color(0xFF3B372F),
-                      foreground: Colors.white,
-                      onPressed: () => _pick(AttachmentSource.files),
+                    Expanded(
+                      child: AppTonalButton(
+                        label: 'Files',
+                        height: 50,
+                        fontSize: 14.5,
+                        borderRadius: 15,
+                        background: _chip,
+                        hoverBackground: const Color(0xFF3B372F),
+                        foreground: Colors.white,
+                        onPressed: () => _pick(AttachmentSource.files),
+                      ),
                     ),
                   ],
                 ),
