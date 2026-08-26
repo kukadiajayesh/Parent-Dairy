@@ -32,19 +32,11 @@ class AddWorksheetPage extends StatefulWidget {
 }
 
 class _AddWorksheetPageState extends State<AddWorksheetPage> {
-  /// Chapters 1–50. With no free-text title field, the chosen chapter also
-  /// stands in for the record's title.
-  static final List<String> _chapterOptions = [
-    for (var i = 1; i <= 50; i++) 'Chapter $i',
-  ];
-
   late final TextEditingController _notes =
       TextEditingController(text: widget.existing?.notes ?? '');
 
   String? _subject;
-  late String? _chapter = (widget.existing?.chapter ?? '').isEmpty
-      ? null
-      : widget.existing!.chapter;
+  late List<String> _chapters = List.of(widget.existing?.chapters ?? const []);
 
   /// §37: today, not a fixed sample date — a parent recording a worksheet is
   /// almost always recording today's.
@@ -55,11 +47,23 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
   late final List<Attachment> _attachments =
       List.of(widget.existing?.attachments ?? const []);
   late Attachment? _answerKey = widget.existing?.answerKey;
+  late Attachment? _hardWords = widget.existing?.hardWords;
 
   bool _saving = false;
 
   bool get _isEditing => widget.existing != null;
-  bool get _canSave => !_saving && _chapter != null && _subject != null;
+  bool get _canSave => !_saving && _chapters.isNotEmpty && _subject != null;
+
+  /// An existing chapter-wide hard-words file the parent can reuse instead of
+  /// attaching a fresh one, offered whenever the first chapter already has one
+  /// on another worksheet.
+  Attachment? _suggestedHardWords(AppState state) {
+    if (_hardWords != null || _chapters.isEmpty) return null;
+    return state.hardWordsForChapter(
+      _chapters.first,
+      excludeRecordId: widget.existing?.id,
+    );
+  }
 
   @override
   void didChangeDependencies() {
@@ -134,14 +138,32 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
     });
   }
 
-  Future<void> _pickChapter() async {
-    final choice = await pickOption(
+  Future<void> _pickChapters() async {
+    final choice = await pickMultipleOptions(
       context,
-      title: 'Chapter',
-      options: _chapterOptions,
-      current: _chapter ?? '',
+      title: 'Chapters',
+      options: kChapterOptions,
+      initial: _chapters,
     );
-    if (choice != null) setState(() => _chapter = choice);
+    if (choice != null) setState(() => _chapters = choice);
+  }
+
+  Future<void> _addHardWords(AttachmentSource source) async {
+    final picked = await Navigator.of(context).push<List<PickedAttachment>>(
+      MaterialPageRoute(
+        builder: (_) =>
+            PickerPage(initialSource: source, allowMultiple: false),
+        settings: const RouteSettings(name: Routes.picker),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+
+    setState(() {
+      _hardWords = AttachmentRepository.stage(
+        picked.first,
+        caption: ImageService.humanSize(picked.first.bytes),
+      );
+    });
   }
 
   Future<void> _save() async {
@@ -152,7 +174,11 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final subject = _subject!;
-    final chapter = _chapter!;
+    final chapters = _chapters;
+    // No free-text title field — the chapters identify the worksheet.
+    final title = chapters.length == 1
+        ? chapters.first
+        : '${chapters.first} +${chapters.length - 1}';
 
     final record = DiaryRecord(
       // Empty id means "create"; the repository assigns the Firestore id.
@@ -161,18 +187,18 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
       academicYearId: widget.existing?.academicYearId ?? state.activeYear,
       type: RecordType.worksheet,
       subject: subject,
-      // No free-text title field — the chapter identifies the worksheet.
-      title: chapter,
+      title: title,
       date: _date,
       dueDate: _dueDate,
       completedDate: _status == WorksheetStatus.completed
           ? (widget.existing?.completedDate ?? DateTime.now())
           : null,
-      chapter: chapter,
+      chapters: chapters,
       notes: _notes.text.trim(),
       status: _status,
       attachments: _attachments,
       answerKey: _answerKey,
+      hardWords: _hardWords,
       createdAt: widget.existing?.createdAt,
     );
 
@@ -232,12 +258,29 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  PickerField(
-                    label: 'Chapter',
-                    value: _chapter ?? 'Select a chapter',
-                    isPlaceholder: _chapter == null,
-                    onTap: _pickChapter,
-                  ),
+                  if (_chapters.isEmpty)
+                    PickerField(
+                      label: 'Chapters',
+                      value: 'Select chapters',
+                      isPlaceholder: true,
+                      onTap: _pickChapters,
+                    )
+                  else ...[
+                    FieldLabel('Chapters', emphasis: FieldEmphasis.primary),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final chapter in _chapters)
+                          AppChip(
+                            label: chapter,
+                            selected: true,
+                            onTap: _pickChapters,
+                          ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   Row(
                     children: [
@@ -331,9 +374,48 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
                   AttachmentSourceRow(onPick: _addAnswerKey),
                   if (_answerKey != null) ...[
                     const SizedBox(height: 10),
-                    _AnswerKeyRow(
+                    _AttachmentRow(
                       attachment: _answerKey!,
                       onRemove: () => setState(() => _answerKey = null),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      const Text(
+                        'Hard words',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Optional · shared across this chapter',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: k.tx4,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  AttachmentSourceRow(onPick: _addHardWords),
+                  if (_hardWords != null) ...[
+                    const SizedBox(height: 10),
+                    _AttachmentRow(
+                      attachment: _hardWords!,
+                      onRemove: () => setState(() => _hardWords = null),
+                    ),
+                  ] else if (_suggestedHardWords(state) != null) ...[
+                    const SizedBox(height: 10),
+                    _SuggestedHardWordsRow(
+                      chapter: _chapters.first,
+                      attachment: _suggestedHardWords(state)!,
+                      onUse: () => setState(
+                        () => _hardWords = _suggestedHardWords(state),
+                      ),
                     ),
                   ],
                   const SizedBox(height: 18),
@@ -486,8 +568,53 @@ class _AttachmentGrid extends StatelessWidget {
   }
 }
 
-class _AnswerKeyRow extends StatelessWidget {
-  const _AnswerKeyRow({required this.attachment, required this.onRemove});
+class _SuggestedHardWordsRow extends StatelessWidget {
+  const _SuggestedHardWordsRow({
+    required this.chapter,
+    required this.attachment,
+    required this.onUse,
+  });
+
+  final String chapter;
+  final Attachment attachment;
+  final VoidCallback onUse;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      radius: 14,
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          attachmentThumb(
+            context,
+            attachment,
+            radius: 12,
+            width: 52,
+            height: 52,
+            showCaption: false,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '$chapter already has a hard-words file',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+          AppFilledButton(
+            label: 'Use',
+            height: 36,
+            elevated: false,
+            onPressed: onUse,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AttachmentRow extends StatelessWidget {
+  const _AttachmentRow({required this.attachment, required this.onRemove});
 
   final Attachment attachment;
   final VoidCallback onRemove;

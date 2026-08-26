@@ -52,6 +52,8 @@ class _FakeRecords implements RecordRepository {
     required String recordId,
     required List<Attachment> attachments,
     Attachment? answerKey,
+    Attachment? hardWords,
+    Attachment? examTimetable,
   }) async {
     writes.add(attachments);
   }

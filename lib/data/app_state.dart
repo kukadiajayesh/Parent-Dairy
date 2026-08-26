@@ -25,7 +25,7 @@ class TimelineFilter {
     this.subject = 'All',
     this.type = 'All',
     this.date = 'This week',
-    this.sortBy = 'Date',
+    this.sortBy = 'Chapter',
   });
 
   final String subject;
@@ -35,7 +35,8 @@ class TimelineFilter {
 
   String get summary => '$subject · $type · $date · sorted by $sortBy';
 
-  bool get isDefault => subject == 'All' && type == 'All' && date == 'This week' && sortBy == 'Date';
+  bool get isDefault =>
+      subject == 'All' && type == 'All' && date == 'This week' && sortBy == 'Chapter';
 
   TimelineFilter copyWith({String? subject, String? type, String? date, String? sortBy}) =>
       TimelineFilter(
@@ -495,6 +496,22 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  /// The most recently updated hard-words file already attached to a worksheet
+  /// covering [chapter], so a second worksheet on the same chapter can reuse it
+  /// instead of asking the parent to attach it again.
+  Attachment? hardWordsForChapter(String chapter, {String? excludeRecordId}) {
+    final matches =
+        worksheets.where(
+          (r) =>
+              r.id != excludeRecordId &&
+              r.hardWords != null &&
+              r.chapters.contains(chapter),
+        ).toList()..sort(
+          (a, b) => (b.updatedAt ?? b.date).compareTo(a.updatedAt ?? a.date),
+        );
+    return matches.firstOrNull?.hardWords;
+  }
+
   /// Saves a worksheet or classwork entry and queues its files.
   ///
   /// Returns as soon as Firestore has accepted the document — which it does
@@ -504,6 +521,8 @@ class AppState extends ChangeNotifier {
     DiaryRecord record, {
     List<PickedAttachment> newFiles = const [],
     PickedAttachment? newAnswerKey,
+    PickedAttachment? newHardWords,
+    PickedAttachment? newExamTimetable,
     bool fromShare = false,
   }) async {
     final uid = _auth.uid;
@@ -533,6 +552,20 @@ class AppState extends ChangeNotifier {
             caption: ImageService.humanSize(newAnswerKey.bytes),
           );
 
+    final hardWords = newHardWords == null
+        ? record.hardWords
+        : AttachmentRepository.stage(
+            newHardWords,
+            caption: ImageService.humanSize(newHardWords.bytes),
+          );
+
+    final examTimetable = newExamTimetable == null
+        ? record.examTimetable
+        : AttachmentRepository.stage(
+            newExamTimetable,
+            caption: ImageService.humanSize(newExamTimetable.bytes),
+          );
+
     final prepared = record.copyWith(
       childId: childId,
       academicYearId: record.academicYearId.isEmpty
@@ -540,6 +573,8 @@ class AppState extends ChangeNotifier {
           : record.academicYearId,
       attachments: staged,
       answerKey: answerKey,
+      hardWords: hardWords,
+      examTimetable: examTimetable,
     );
 
     final saved = await _recordRepo.save(

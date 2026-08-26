@@ -62,11 +62,15 @@ class RecordRepository {
     required String recordId,
     required List<Attachment> attachments,
     Attachment? answerKey,
+    Attachment? hardWords,
+    Attachment? examTimetable,
   }) async {
     try {
       final pending = [
         ...attachments,
         ?answerKey,
+        ?hardWords,
+        ?examTimetable,
       ].any((a) => a.sync != SyncState.synced);
 
       await Paths.records(uid, childId).doc(recordId).update({
@@ -74,6 +78,12 @@ class RecordRepository {
         'answerKey': answerKey == null
             ? null
             : Map$.attachmentToMap(answerKey),
+        'hardWords': hardWords == null
+            ? null
+            : Map$.attachmentToMap(hardWords),
+        'examTimetable': examTimetable == null
+            ? null
+            : Map$.attachmentToMap(examTimetable),
         'hasPendingUpload': pending,
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -228,6 +238,22 @@ class RecordRepository {
         "A worksheet's due date cannot be before its date.",
         canRetry: false,
       );
+    }
+    if (record.isExam) {
+      if (record.examType.trim().isEmpty) {
+        throw const AppFailure(
+          FailureKind.invalidFile,
+          'Add the exam type before saving.',
+          canRetry: false,
+        );
+      }
+      if (record.examTimetable == null) {
+        throw const AppFailure(
+          FailureKind.invalidFile,
+          'Attach the exam timetable before saving.',
+          canRetry: false,
+        );
+      }
     }
   }
 }

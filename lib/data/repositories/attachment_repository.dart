@@ -42,8 +42,11 @@ class AttachmentRepository {
     sync: SyncState.pending,
   );
 
-  static String folderFor(RecordType type) =>
-      type == RecordType.worksheet ? 'worksheets' : 'classwork';
+  static String folderFor(RecordType type) => switch (type) {
+    RecordType.worksheet => 'worksheets',
+    RecordType.classwork => 'classwork',
+    RecordType.exam => 'exams',
+  };
 
   /// Uploads one staged attachment and returns it with its Storage path and
   /// download URL filled in.

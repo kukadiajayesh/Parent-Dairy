@@ -45,15 +45,11 @@ class ShareImagePage extends StatefulWidget {
 }
 
 class _ShareImagePageState extends State<ShareImagePage> {
-  static final List<String> _chapterOptions = [
-    for (var i = 1; i <= 50; i++) 'Chapter $i',
-  ];
-
   final TextEditingController _notes = TextEditingController();
 
   RecordType _type = RecordType.worksheet;
   String? _subject;
-  String? _chapter;
+  List<String> _chapters = const [];
   DateTime _date = DateUtils.dateOnly(DateTime.now());
   DateTime? _dueDate;
   Attachment? _answerKey;
@@ -74,7 +70,7 @@ class _ShareImagePageState extends State<ShareImagePage> {
   bool get _isWorksheet => _type == RecordType.worksheet;
   bool get _hasAnswerKey => _answerKey != null;
   bool get _canSave =>
-      !_saving && _subject != null && _chapter != null && _files.isNotEmpty;
+      !_saving && _subject != null && _chapters.isNotEmpty && _files.isNotEmpty;
 
   @override
   void didChangeDependencies() {
@@ -90,14 +86,14 @@ class _ShareImagePageState extends State<ShareImagePage> {
     super.dispose();
   }
 
-  Future<void> _pickChapter() async {
-    final choice = await pickOption(
+  Future<void> _pickChapters() async {
+    final choice = await pickMultipleOptions(
       context,
-      title: 'Chapter',
-      options: _chapterOptions,
-      current: _chapter ?? '',
+      title: 'Chapters',
+      options: kChapterOptions,
+      initial: _chapters,
     );
-    if (choice != null) setState(() => _chapter = choice);
+    if (choice != null) setState(() => _chapters = choice);
   }
 
   Future<void> _pickAnswerKey() async {
@@ -126,17 +122,20 @@ class _ShareImagePageState extends State<ShareImagePage> {
     final state = AppScope.read(context);
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final chapter = _chapter!;
+    final chapters = _chapters;
+    final title = chapters.length == 1
+        ? chapters.first
+        : '${chapters.first} +${chapters.length - 1}';
 
     final record = DiaryRecord(
       id: '',
       academicYearId: state.activeYear,
       type: _type,
       subject: _subject!,
-      title: chapter,
+      title: title,
       date: _date,
       dueDate: _isWorksheet ? _dueDate : null,
-      chapter: chapter,
+      chapters: chapters,
       notes: _isWorksheet ? '' : _notes.text.trim(),
       attachments: _files,
       answerKey: _isWorksheet ? _answerKey : null,
@@ -150,7 +149,7 @@ class _ShareImagePageState extends State<ShareImagePage> {
         // The files are spent; what carries over is the context a parent
         // filing a batch would otherwise re-enter every time.
         setState(() {
-          _chapter = null;
+          _chapters = const [];
           _notes.clear();
           _dueDate = null;
           _answerKey = null;
@@ -254,12 +253,29 @@ class _ShareImagePageState extends State<ShareImagePage> {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  PickerField(
-                    label: 'Chapter',
-                    value: _chapter ?? 'Select a chapter',
-                    isPlaceholder: _chapter == null,
-                    onTap: _pickChapter,
-                  ),
+                  if (_chapters.isEmpty)
+                    PickerField(
+                      label: 'Chapters',
+                      value: 'Select chapters',
+                      isPlaceholder: true,
+                      onTap: _pickChapters,
+                    )
+                  else ...[
+                    FieldLabel('Chapters', emphasis: FieldEmphasis.primary),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final chapter in _chapters)
+                          AppChip(
+                            label: chapter,
+                            selected: true,
+                            onTap: _pickChapters,
+                          ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,

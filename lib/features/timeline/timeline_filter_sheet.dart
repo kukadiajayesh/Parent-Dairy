@@ -52,8 +52,9 @@ class _FilterSheetBodyState extends State<_FilterSheetBody> {
         'All',
         'Worksheet',
         'Classwork',
-        // Exam and Marks join this row when showExamMarks is on.
-        if (kShowExamMarks) ...['Exam', 'Marks'],
+        'Exam',
+        // Marks joins this row when showExamMarks is on.
+        if (kShowExamMarks) 'Marks',
       ];
 
   @override

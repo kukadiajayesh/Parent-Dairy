@@ -2,7 +2,8 @@ import '../core/theme/subject_hue.dart';
 
 enum RecordType {
   worksheet('worksheet'),
-  classwork('classwork');
+  classwork('classwork'),
+  exam('exam');
 
   const RecordType(this.wire);
 
@@ -12,9 +13,26 @@ enum RecordType {
 
   static RecordType fromWire(String? value) => switch (value) {
     'classwork' => RecordType.classwork,
+    'exam' => RecordType.exam,
     _ => RecordType.worksheet,
   };
 }
+
+/// Chapter chip options offered when tagging a worksheet/classwork/shared
+/// record. Bounded to 1–10 — the single source of truth for every chapter
+/// picker in the app.
+const List<String> kChapterOptions = [
+  'Chapter 1',
+  'Chapter 2',
+  'Chapter 3',
+  'Chapter 4',
+  'Chapter 5',
+  'Chapter 6',
+  'Chapter 7',
+  'Chapter 8',
+  'Chapter 9',
+  'Chapter 10',
+];
 
 enum WorksheetStatus {
   pending('Pending', 'pending'),
@@ -284,11 +302,14 @@ class DiaryRecord {
     this.academicYearId = '',
     this.dueDate,
     this.completedDate,
-    this.chapter = '',
+    this.chapters = const [],
     this.notes = '',
     this.status = WorksheetStatus.pending,
     this.attachments = const [],
     this.answerKey,
+    this.hardWords,
+    this.examType = '',
+    this.examTimetable,
     this.createdAt,
     this.updatedAt,
     this.isDeleted = false,
@@ -319,12 +340,26 @@ class DiaryRecord {
   final DateTime? dueDate;
   final DateTime? completedDate;
 
-  /// Optional chapter or unit the worksheet covers, e.g. `Chapter 4 — Fractions`.
-  final String chapter;
+  /// Chapters or units the record covers, e.g. `['Chapter 4']`. Bounded to
+  /// [kChapterOptions] by the picker UI.
+  final List<String> chapters;
   final String notes;
   final WorksheetStatus status;
   final List<Attachment> attachments;
   final Attachment? answerKey;
+
+  /// Hard-words file for the record's (first) chapter. Chapter-scoped in
+  /// practice — see [AppState.hardWordsForChapter], which offers the most
+  /// recent one attached to any record sharing that chapter.
+  final Attachment? hardWords;
+
+  /// Free-text exam type, e.g. `Unit Test 1`, `Mid-term` — exam records only.
+  final String examType;
+
+  /// Exam timetable image — required for [RecordType.exam]. Previous exam
+  /// papers reuse the generic [attachments] list (image-only, enforced by
+  /// the add-exam UI).
+  final Attachment? examTimetable;
 
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -335,16 +370,32 @@ class DiaryRecord {
   final DateTime? deletedAt;
 
   bool get isWorksheet => type == RecordType.worksheet;
+  bool get isExam => type == RecordType.exam;
 
   bool get hasAnswerKey => answerKey != null;
+  bool get hasHardWords => hardWords != null;
+  bool get hasExamTimetable => examTimetable != null;
+
+  /// First chapter plus a "+N more" suffix when more than one is tagged, e.g.
+  /// `Chapter 2 +1`. Empty string when no chapter is tagged.
+  String get chapterLabel {
+    if (chapters.isEmpty) return '';
+    if (chapters.length == 1) return chapters.first;
+    return '${chapters.first} +${chapters.length - 1}';
+  }
 
   /// Pages/photos attached to the record. The answer key is counted separately
   /// — the design lists "2 files" for a worksheet that also carries a key.
   int get fileCount => attachments.length;
 
-  /// Every file on the record, answer key included — what the uploader and the
-  /// delete path both need to walk.
-  List<Attachment> get allFiles => [...attachments, ?answerKey];
+  /// Every file on the record, answer key/hard words/exam timetable included
+  /// — what the uploader and the delete path both need to walk.
+  List<Attachment> get allFiles => [
+    ...attachments,
+    ?answerKey,
+    ?hardWords,
+    ?examTimetable,
+  ];
 
   /// Worst state across the record's files: one failed upload makes the whole
   /// record show as failed.
@@ -375,11 +426,14 @@ class DiaryRecord {
     DateTime? date,
     DateTime? dueDate,
     DateTime? completedDate,
-    String? chapter,
+    List<String>? chapters,
     String? notes,
     WorksheetStatus? status,
     List<Attachment>? attachments,
     Attachment? answerKey,
+    Attachment? hardWords,
+    String? examType,
+    Attachment? examTimetable,
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
@@ -387,6 +441,8 @@ class DiaryRecord {
     bool clearDueDate = false,
     bool clearCompletedDate = false,
     bool clearAnswerKey = false,
+    bool clearHardWords = false,
+    bool clearExamTimetable = false,
   }) => DiaryRecord(
     id: id ?? this.id,
     childId: childId ?? this.childId,
@@ -399,11 +455,16 @@ class DiaryRecord {
     completedDate: clearCompletedDate
         ? null
         : (completedDate ?? this.completedDate),
-    chapter: chapter ?? this.chapter,
+    chapters: chapters ?? this.chapters,
     notes: notes ?? this.notes,
     status: status ?? this.status,
     attachments: attachments ?? this.attachments,
     answerKey: clearAnswerKey ? null : (answerKey ?? this.answerKey),
+    hardWords: clearHardWords ? null : (hardWords ?? this.hardWords),
+    examType: examType ?? this.examType,
+    examTimetable: clearExamTimetable
+        ? null
+        : (examTimetable ?? this.examTimetable),
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     isDeleted: isDeleted ?? this.isDeleted,

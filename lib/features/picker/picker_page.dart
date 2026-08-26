@@ -17,13 +17,23 @@ import 'attachment_source_row.dart';
 /// Returns the files the parent kept, so the form that pushed it can attach
 /// them. Cancelling returns an empty list, never a partial one.
 class PickerPage extends StatefulWidget {
-  const PickerPage({super.key, this.initialSource, this.allowMultiple = true});
+  const PickerPage({
+    super.key,
+    this.initialSource,
+    this.allowMultiple = true,
+    this.imagesOnly = false,
+  });
 
   /// Opens straight into the camera or gallery, so "Camera" on a form is one
   /// tap rather than two (§37).
   final AttachmentSource? initialSource;
 
   final bool allowMultiple;
+
+  /// Hides the "Files" source — camera and gallery only ever produce images,
+  /// so this is enough to enforce "image attachment only" (exam timetable,
+  /// previous exam papers) without touching [ImageService].
+  final bool imagesOnly;
 
   @override
   State<PickerPage> createState() => _PickerPageState();
@@ -321,19 +331,21 @@ class _PickerPageState extends State<PickerPage> {
                         onPressed: () => _pick(AttachmentSource.gallery),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: AppTonalButton(
-                        label: 'Files',
-                        height: 50,
-                        fontSize: 14.5,
-                        borderRadius: 15,
-                        background: _chip,
-                        hoverBackground: const Color(0xFF3B372F),
-                        foreground: Colors.white,
-                        onPressed: () => _pick(AttachmentSource.files),
+                    if (!widget.imagesOnly) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: AppTonalButton(
+                          label: 'Files',
+                          height: 50,
+                          fontSize: 14.5,
+                          borderRadius: 15,
+                          background: _chip,
+                          hoverBackground: const Color(0xFF3B372F),
+                          foreground: Colors.white,
+                          onPressed: () => _pick(AttachmentSource.files),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

@@ -33,6 +33,7 @@ class WorksheetDetailPage extends StatefulWidget {
 
 class _WorksheetDetailPageState extends State<WorksheetDetailPage> {
   bool _attachingAnswerKey = false;
+  bool _attachingHardWords = false;
 
   Future<void> _pickAnswerKey(DiaryRecord record, AttachmentSource source) async {
     final picked = await Navigator.of(context).push<List<PickedAttachment>>(
@@ -61,6 +62,36 @@ class _WorksheetDetailPageState extends State<WorksheetDetailPage> {
       AppToast.failure(context, error, title: "Couldn't attach answer key");
     } finally {
       if (mounted) setState(() => _attachingAnswerKey = false);
+    }
+  }
+
+  Future<void> _pickHardWords(DiaryRecord record, AttachmentSource source) async {
+    final picked = await Navigator.of(context).push<List<PickedAttachment>>(
+      MaterialPageRoute(
+        builder: (_) =>
+            PickerPage(initialSource: source, allowMultiple: false),
+        settings: const RouteSettings(name: Routes.picker),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+
+    setState(() => _attachingHardWords = true);
+    final state = AppScope.read(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await state.saveRecord(record, newHardWords: picked.first);
+      if (!mounted) return;
+      AppToast.showOn(
+        messenger,
+        context,
+        title: 'Hard words attached',
+        description: '${record.title} now has a hard-words file.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.failure(context, error, title: "Couldn't attach hard words");
+    } finally {
+      if (mounted) setState(() => _attachingHardWords = false);
     }
   }
 
@@ -198,13 +229,6 @@ class _WorksheetDetailPageState extends State<WorksheetDetailPage> {
                         label: 'Given',
                         value: AppDate.full(record.date),
                       ),
-                      // The heading above already shows the chapter for every
-                      // worksheet saved since the chapter picker replaced the
-                      // title field — this only adds value for older records
-                      // whose title was typed separately.
-                      if (record.chapter.isNotEmpty &&
-                          record.chapter != record.title)
-                        _MetaColumn(label: 'Chapter', value: record.chapter),
                       if (record.dueDate != null)
                         _MetaColumn(
                           label: 'Due',
@@ -219,6 +243,17 @@ class _WorksheetDetailPageState extends State<WorksheetDetailPage> {
                         ),
                     ],
                   ),
+                  if (record.chapters.length > 1) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final chapter in record.chapters)
+                          AppChip(label: chapter, selected: true),
+                      ],
+                    ),
+                  ],
                   if (record.notes.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Container(
@@ -350,6 +385,78 @@ class _WorksheetDetailPageState extends State<WorksheetDetailPage> {
                     AttachmentSourceRow(
                       onPick: (source) => _pickAnswerKey(record, source),
                     ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const SectionLabel('Hard words'),
+                      if (record.hardWords != null)
+                        AppIconButton(
+                          size: 32,
+                          borderRadius: 10,
+                          tooltip: 'Replace',
+                          onTap: _attachingHardWords
+                              ? null
+                              : () => _showHardWordsSourceSheet(record),
+                          child: StrokeIcon(
+                            AppIcons.editSimple,
+                            size: 16,
+                            color: k.tx3,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (record.hardWords != null)
+                    AppCard(
+                      radius: 16,
+                      onTap: () => AttachmentActions.open(record.hardWords!),
+                      child: Row(
+                        children: [
+                          attachmentThumb(
+                            context,
+                            record.hardWords,
+                            radius: 12,
+                            width: 52,
+                            height: 52,
+                            showCaption: false,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  record.hardWords!.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  record.hardWords!.meta,
+                                  style:
+                                      TextStyle(fontSize: 12, color: k.tx4),
+                                ),
+                              ],
+                            ),
+                          ),
+                          StrokeIcon(AppIcons.forward, size: 18, color: k.tx4),
+                        ],
+                      ),
+                    )
+                  else if (_attachingHardWords)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else
+                    AttachmentSourceRow(
+                      onPick: (source) => _pickHardWords(record, source),
+                    ),
                 ],
               ),
             ),
@@ -413,6 +520,33 @@ class _WorksheetDetailPageState extends State<WorksheetDetailPage> {
     );
     if (source == null || !mounted) return;
     await _pickAnswerKey(record, source);
+  }
+
+  Future<void> _showHardWordsSourceSheet(DiaryRecord record) async {
+    final source = await showModalBottomSheet<AttachmentSource>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 26),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SectionLabel('Replace hard words'),
+              const SizedBox(height: 14),
+              AttachmentSourceRow(
+                emphasizeFirst: true,
+                onPick: (s) => Navigator.of(sheetContext).pop(s),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    await _pickHardWords(record, source);
   }
 
   /// A PDF opens directly in the device's own viewer; an image opens the

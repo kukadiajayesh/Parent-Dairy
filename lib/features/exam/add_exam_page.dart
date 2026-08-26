@@ -2,52 +2,54 @@ import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
 import '../../core/format.dart';
+import '../../core/services/image_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
-import '../../core/widgets/sheets.dart';
 import '../../core/widgets/layout.dart';
-import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
-import '../../core/services/image_service.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
 import '../../data/repositories/attachment_repository.dart';
 import '../picker/attachment_source_row.dart';
 import '../picker/picker_page.dart';
 
-/// Add / edit classwork: subject, title, date, notes and a photo drop zone.
-class AddClassworkPage extends StatefulWidget {
-  const AddClassworkPage({super.key, this.existing});
+/// Add / edit an exam: subject, exam type, timetable (single image) and
+/// previous exam papers (multiple images) — both attachment slots are
+/// image-only, since a timetable or a paper is always photographed or
+/// screenshotted, never a PDF scan.
+class AddExamPage extends StatefulWidget {
+  const AddExamPage({super.key, this.existing});
 
   final DiaryRecord? existing;
 
   @override
-  State<AddClassworkPage> createState() => _AddClassworkPageState();
+  State<AddExamPage> createState() => _AddExamPageState();
 }
 
-class _AddClassworkPageState extends State<AddClassworkPage> {
-  late final TextEditingController _notes =
-      TextEditingController(text: widget.existing?.notes ?? '');
+class _AddExamPageState extends State<AddExamPage> {
+  late final TextEditingController _examType =
+      TextEditingController(text: widget.existing?.examType ?? '');
 
   String? _subject;
-  late List<String> _chapters = List.of(widget.existing?.chapters ?? const []);
-
-  /// §37: today by default.
   late DateTime _date =
       widget.existing?.date ?? DateUtils.dateOnly(DateTime.now());
-  late final List<Attachment> _photos =
+  late Attachment? _timetable = widget.existing?.examTimetable;
+  late final List<Attachment> _previousPapers =
       List.of(widget.existing?.attachments ?? const []);
 
   bool _saving = false;
 
   bool get _isEditing => widget.existing != null;
   bool get _canSave =>
-      !_saving && _chapters.isNotEmpty && _subject != null;
+      !_saving &&
+      _subject != null &&
+      _examType.text.trim().isNotEmpty &&
+      _timetable != null;
 
   @override
   void didChangeDependencies() {
@@ -60,24 +62,47 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
 
   @override
   void dispose() {
-    _notes.dispose();
+    _examType.dispose();
     super.dispose();
   }
 
-  Future<void> _pickChapters() async {
-    final choice = await pickMultipleOptions(
-      context,
-      title: 'Chapters',
-      options: kChapterOptions,
-      initial: _chapters,
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
     );
-    if (choice != null) setState(() => _chapters = choice);
+    if (picked == null) return;
+    setState(() => _date = picked);
   }
 
-  Future<void> _addPhotos([AttachmentSource source = AttachmentSource.camera]) async {
+  Future<void> _pickTimetable(AttachmentSource source) async {
     final picked = await Navigator.of(context).push<List<PickedAttachment>>(
       MaterialPageRoute(
-        builder: (_) => PickerPage(initialSource: source),
+        builder: (_) => PickerPage(
+          initialSource: source,
+          allowMultiple: false,
+          imagesOnly: true,
+        ),
+        settings: const RouteSettings(name: Routes.picker),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+
+    setState(() {
+      _timetable = AttachmentRepository.stage(
+        picked.first,
+        caption: ImageService.humanSize(picked.first.bytes),
+      );
+    });
+  }
+
+  Future<void> _pickPreviousPapers(AttachmentSource source) async {
+    final picked = await Navigator.of(context).push<List<PickedAttachment>>(
+      MaterialPageRoute(
+        builder: (_) =>
+            PickerPage(initialSource: source, imagesOnly: true),
         settings: const RouteSettings(name: Routes.picker),
       ),
     );
@@ -85,10 +110,10 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
 
     setState(() {
       for (final file in picked) {
-        _photos.add(
+        _previousPapers.add(
           AttachmentRepository.stage(
             file,
-            caption: 'Photo ${_photos.length + 1}',
+            caption: 'Page ${_previousPapers.length + 1}',
           ),
         );
       }
@@ -103,22 +128,19 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final subject = _subject!;
-    final chapters = _chapters;
-    final title = chapters.length == 1
-        ? chapters.first
-        : '${chapters.first} +${chapters.length - 1}';
+    final examType = _examType.text.trim();
 
     final record = DiaryRecord(
       id: widget.existing?.id ?? '',
       childId: widget.existing?.childId ?? '',
       academicYearId: widget.existing?.academicYearId ?? state.activeYear,
-      type: RecordType.classwork,
+      type: RecordType.exam,
       subject: subject,
-      title: title,
+      title: examType,
       date: _date,
-      chapters: chapters,
-      notes: _notes.text.trim(),
-      attachments: _photos,
+      examType: examType,
+      examTimetable: _timetable,
+      attachments: _previousPapers,
       createdAt: widget.existing?.createdAt,
     );
 
@@ -129,14 +151,13 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
       AppToast.showOn(
         messenger,
         context,
-        title: _isEditing ? 'Classwork updated' : 'Classwork saved',
-        description: '${AppFormat.photoCount(_photos.length)} added to '
-            '$subject classwork.',
+        title: _isEditing ? 'Exam updated' : 'Exam saved',
+        description: '$subject exam added to your timeline.',
       );
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      AppToast.failure(context, error, title: "Couldn't save classwork");
+      AppToast.failure(context, error, title: "Couldn't save exam");
     }
   }
 
@@ -154,7 +175,7 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: ScreenHeader(
-                title: _isEditing ? 'Edit Classwork' : 'Add Classwork',
+                title: _isEditing ? 'Edit Exam' : 'Add Exam',
               ),
             ),
             Expanded(
@@ -177,65 +198,84 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  if (_chapters.isEmpty)
-                    PickerField(
-                      label: 'Chapters',
-                      value: 'Select chapters',
-                      isPlaceholder: true,
-                      onTap: _pickChapters,
-                    )
-                  else ...[
-                    FieldLabel('Chapters', emphasis: FieldEmphasis.primary),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final chapter in _chapters)
-                          AppChip(
-                            label: chapter,
-                            selected: true,
-                            onTap: _pickChapters,
-                          ),
-                      ],
-                    ),
-                  ],
+                  AppTextField(
+                    label: 'Exam type',
+                    controller: _examType,
+                    hintText: 'Unit Test 1, Mid-term, Final…',
+                    onChanged: (_) => setState(() {}),
+                  ),
                   const SizedBox(height: 18),
                   PickerField(
                     label: 'Date',
                     value: AppDate.full(_date),
                     trailing: PickerTrailing.calendar,
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _date,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2035),
-                      );
-                      if (picked != null) setState(() => _date = picked);
-                    },
+                    onTap: _pickDate,
                   ),
                   const SizedBox(height: 18),
-                  AppTextField(
-                    label: 'Notes',
-                    controller: _notes,
-                    hintText: 'Optional — copied from board',
-                    maxLines: 3,
-                    minHeight: 66,
+                  const HairLine(),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Exam timetable',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
+                  const SizedBox(height: 10),
+                  if (_timetable != null)
+                    AppCard(
+                      radius: 14,
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          attachmentThumb(
+                            context,
+                            _timetable,
+                            radius: 12,
+                            width: 52,
+                            height: 52,
+                            showCaption: false,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _timetable!.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          AppIconButton(
+                            size: 34,
+                            borderRadius: 10,
+                            hoverBackground: k.errC,
+                            onTap: () => setState(() => _timetable = null),
+                            tooltip: 'Remove',
+                            child:
+                                StrokeIcon(AppIcons.close, size: 17, color: k.err),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    AttachmentSourceRow(
+                      emphasizeFirst: true,
+                      showFiles: false,
+                      onPick: _pickTimetable,
+                    ),
                   const SizedBox(height: 18),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Classwork',
+                        'Previous exam papers',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+                      const SizedBox(width: 8),
                       Text(
-                        AppFormat.photoCount(_photos.length),
+                        'Optional',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -246,11 +286,11 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                   ),
                   const SizedBox(height: 10),
                   AttachmentSourceRow(
-                    emphasizeFirst: true,
-                    onPick: _addPhotos,
+                    showFiles: false,
+                    onPick: _pickPreviousPapers,
                   ),
-                  if (_photos.isNotEmpty) ...[
-                    const SizedBox(height: 18),
+                  if (_previousPapers.isNotEmpty) ...[
+                    const SizedBox(height: 10),
                     GridView.count(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -258,13 +298,13 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                       mainAxisSpacing: 10,
                       crossAxisSpacing: 10,
                       children: [
-                        for (var i = 0; i < _photos.length; i++)
+                        for (var i = 0; i < _previousPapers.length; i++)
                           Stack(
                             fit: StackFit.expand,
                             children: [
                               attachmentThumb(
                                 context,
-                                _photos[i],
+                                _previousPapers[i],
                                 radius: 14,
                               ),
                               Positioned(
@@ -275,8 +315,9 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                                   shape: const CircleBorder(),
                                   clipBehavior: Clip.antiAlias,
                                   child: InkWell(
-                                    onTap: () =>
-                                        setState(() => _photos.removeAt(i)),
+                                    onTap: () => setState(
+                                      () => _previousPapers.removeAt(i),
+                                    ),
                                     child: Padding(
                                       padding: const EdgeInsets.all(4),
                                       child: StrokeIcon(
@@ -300,7 +341,7 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
               child: AppFilledButton(
                 label: _saving
                     ? 'Saving…'
-                    : (_isEditing ? 'Save Changes' : 'Save Classwork'),
+                    : (_isEditing ? 'Save Changes' : 'Save Exam'),
                 onPressed: _canSave ? _save : null,
               ),
             ),
@@ -310,5 +351,3 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
     );
   }
 }
-
-

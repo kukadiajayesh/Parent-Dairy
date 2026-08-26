@@ -120,9 +120,11 @@ class TimelinePage extends StatelessWidget {
         return false;
       }
       if (filter.type != 'All') {
-        final wanted = filter.type == 'Worksheet'
-            ? RecordType.worksheet
-            : RecordType.classwork;
+        final wanted = switch (filter.type) {
+          'Worksheet' => RecordType.worksheet,
+          'Exam' => RecordType.exam,
+          _ => RecordType.classwork,
+        };
         if (record.type != wanted) return false;
       }
       return switch (filter.date) {
@@ -142,8 +144,8 @@ class TimelinePage extends StatelessWidget {
     if (filter.sortBy == 'Chapter') {
       // Sort records by chapter ascending
       records.sort((a, b) {
-        final aChap = a.chapter;
-        final bChap = b.chapter;
+        final aChap = a.chapterLabel;
+        final bChap = b.chapterLabel;
 
         if (aChap.isEmpty && bChap.isEmpty) return 0;
         if (aChap.isEmpty) return 1; // Empty chapters at the end
@@ -172,7 +174,9 @@ class TimelinePage extends StatelessWidget {
       // Group by chapter
       final groups = <_TimelineGroup>[];
       for (final record in records) {
-        final chap = record.chapter.isEmpty ? 'No Chapter' : record.chapter;
+        final chap = record.chapterLabel.isEmpty
+            ? 'No Chapter'
+            : record.chapterLabel;
         if (groups.isNotEmpty && groups.last.title == chap) {
           groups.last.records.add(record);
         } else {
@@ -329,7 +333,11 @@ class TimelineCard extends StatelessWidget {
     return AppCard(
       shadow: true,
       onTap: () => root.pushNamed(
-        record.isWorksheet ? Routes.worksheetDetail : Routes.classworkDetail,
+        switch (record.type) {
+          RecordType.worksheet => Routes.worksheetDetail,
+          RecordType.classwork => Routes.classworkDetail,
+          RecordType.exam => Routes.examDetail,
+        },
         arguments: record.id,
       ),
       child: Row(
@@ -369,7 +377,11 @@ class TimelineCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  record.isWorksheet ? 'Worksheet' : 'Classwork',
+                  switch (record.type) {
+                    RecordType.worksheet => 'Worksheet',
+                    RecordType.classwork => 'Classwork',
+                    RecordType.exam => 'Exam',
+                  },
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -390,19 +402,32 @@ class TimelineCard extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 6,
                   children: [
-                    StatusPill(
-                      label: record.isWorksheet
-                          ? AppFormat.attachmentCount(record.fileCount)
-                          : AppFormat.photoCount(record.attachments.length),
-                      background: k.surf2,
-                      foreground: k.tx3,
-                      leading: StrokeIcon(
-                        record.isWorksheet ? AppIcons.attachment : AppIcons.camera,
-                        size: 12,
-                        color: k.tx3,
-                        strokeWidth: record.isWorksheet ? 2.2 : 2,
+                    if (record.hasAnswerKey)
+                      StatusPill(
+                        label: 'Answer key',
+                        background: k.surf2,
+                        foreground: k.tx3,
+                        leading: StrokeIcon(
+                          AppIcons.attachment,
+                          size: 12,
+                          color: k.tx3,
+                          strokeWidth: 2.2,
+                        ),
+                      )
+                    else if (record.attachments.isNotEmpty)
+                      StatusPill(
+                        label: record.isWorksheet
+                            ? AppFormat.attachmentCount(record.fileCount)
+                            : AppFormat.photoCount(record.attachments.length),
+                        background: k.surf2,
+                        foreground: k.tx3,
+                        leading: StrokeIcon(
+                          record.isWorksheet ? AppIcons.attachment : AppIcons.camera,
+                          size: 12,
+                          color: k.tx3,
+                          strokeWidth: record.isWorksheet ? 2.2 : 2,
+                        ),
                       ),
-                    ),
                     if (record.isWorksheet &&
                         record.status == WorksheetStatus.pending)
                       StatusPill(

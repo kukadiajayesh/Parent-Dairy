@@ -13,10 +13,15 @@ class AttachmentSourceRow extends StatelessWidget {
     super.key,
     required this.onPick,
     this.emphasizeFirst = false,
+    this.showFiles = true,
   });
 
   final ValueChanged<AttachmentSource> onPick;
   final bool emphasizeFirst;
+
+  /// Hidden for image-only attachments (exam timetable, previous exam
+  /// papers) — camera and gallery only ever produce images.
+  final bool showFiles;
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +65,7 @@ class AttachmentSourceRow extends StatelessWidget {
       children: [
         button(AttachmentSource.camera, 'Camera', accent: emphasizeFirst),
         button(AttachmentSource.gallery, 'Gallery'),
-        button(AttachmentSource.files, 'Files'),
+        if (showFiles) button(AttachmentSource.files, 'Files'),
       ],
     );
   }

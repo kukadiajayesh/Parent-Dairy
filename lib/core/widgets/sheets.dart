@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_tokens.dart';
 import 'app_icons.dart';
 import 'buttons.dart';
+import 'chips.dart';
 import 'layout.dart';
 import 'stroke_icon.dart';
 
@@ -99,6 +100,52 @@ Future<String?> pickOption(
             ),
           ],
         ],
+      ),
+    ),
+  );
+}
+
+/// Opens a multi-choice bottom sheet listing [options] as toggleable chips.
+/// Returns the selected subset, or `null` if dismissed without confirming —
+/// the chapter picker's chip variant of [pickOption].
+Future<List<String>?> pickMultipleOptions(
+  BuildContext context, {
+  required String title,
+  required List<String> options,
+  required List<String> initial,
+}) {
+  final selected = {...initial};
+  return AppSheet.show<List<String>>(
+    context,
+    (sheetContext) => StatefulBuilder(
+      builder: (sheetContext, setState) => AppSheet(
+        title: title,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in options)
+                  AppChip(
+                    label: option,
+                    selected: selected.contains(option),
+                    onTap: () => setState(() {
+                      if (!selected.remove(option)) selected.add(option);
+                    }),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            AppFilledButton(
+              label: 'Done',
+              height: 50,
+              onPressed: () =>
+                  Navigator.of(sheetContext).pop(selected.toList()),
+            ),
+          ],
+        ),
       ),
     ),
   );

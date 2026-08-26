@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/config/feature_flags.dart';
 import '../core/theme/app_tokens.dart';
@@ -69,7 +70,11 @@ class _MainShellState extends State<MainShell> {
           if (await _currentNavigator.maybePop()) return;
           if (_index != 0) {
             setState(() => _index = 0);
+            return;
           }
+          // Already on Home with nothing to pop — back exits the app rather
+          // than being silently swallowed.
+          await SystemNavigator.pop();
         },
         child: Scaffold(
           backgroundColor: k.bg,

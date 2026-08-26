@@ -286,7 +286,24 @@ class _QuickActions extends StatelessWidget {
             ),
           ],
         ),
-        // Exam and Marks tiles live here in the design, behind showExamMarks.
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _QuickActionTile(
+                label: 'Exam',
+                tint: k.warnC,
+                icon: AppIcons.document,
+                iconColor: k.warnInk,
+                hoverBorder: k.warn,
+                onTap: () => root.pushNamed(Routes.addExam),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(child: SizedBox.shrink()),
+          ],
+        ),
+        // The Marks tile lives here in the design, behind showExamMarks.
         const SizedBox(height: 12),
         _AddFromImageBanner(onTap: () => root.pushNamed(Routes.shareImage)),
       ],
@@ -564,7 +581,11 @@ class _RecentRow extends StatelessWidget {
       radius: 16,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       onTap: () => root.pushNamed(
-        record.isWorksheet ? Routes.worksheetDetail : Routes.classworkDetail,
+        switch (record.type) {
+          RecordType.worksheet => Routes.worksheetDetail,
+          RecordType.classwork => Routes.classworkDetail,
+          RecordType.exam => Routes.examDetail,
+        },
         arguments: record.id,
       ),
       child: Row(
@@ -587,7 +608,11 @@ class _RecentRow extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      record.isWorksheet ? 'WORKSHEET' : 'CLASSWORK',
+                      switch (record.type) {
+                        RecordType.worksheet => 'WORKSHEET',
+                        RecordType.classwork => 'CLASSWORK',
+                        RecordType.exam => 'EXAM',
+                      },
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,

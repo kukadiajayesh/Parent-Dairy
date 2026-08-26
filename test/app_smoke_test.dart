@@ -150,23 +150,22 @@ void main() {
     expect(kShowExamMarks, isFalse);
   });
 
-  testWidgets('home hides every exam and marks surface', (tester) async {
+  testWidgets('home hides every marks surface', (tester) async {
     await pumpShell(tester);
 
     expect(find.text('Worksheet'), findsOneWidget);
     expect(find.text('Classwork'), findsOneWidget);
-    expect(find.text('Exam'), findsNothing);
     expect(find.text('Marks'), findsNothing);
     expect(find.text('LATEST MARKS'), findsNothing);
   });
 
-  testWidgets('home screen offers quick actions for worksheet, classwork and image', (tester) async {
+  testWidgets('home screen offers quick actions for worksheet, classwork, exam and image', (tester) async {
     await pumpShell(tester);
 
     expect(find.text('Worksheet'), findsWidgets);
     expect(find.text('Classwork'), findsWidgets);
+    expect(find.text('Exam'), findsWidgets);
     expect(find.text('Add from Image'), findsOneWidget);
-    expect(find.text('Exam'), findsNothing);
     expect(find.text('Marks'), findsNothing);
   });
 
@@ -177,11 +176,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Add Worksheet'), findsOneWidget);
 
-    // There is no free-text title anymore — the chosen chapter (1–50) stands
-    // in for it.
-    await tester.tap(find.text('Select a chapter'));
+    // There is no free-text title anymore — the chosen chapter(s) (1–10)
+    // stand in for it. Chapters are picked as chips, confirmed with "Done".
+    await tester.tap(find.text('Select chapters'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Chapter 7'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Save Worksheet'));
@@ -202,9 +203,11 @@ void main() {
     expect(find.text('Add Classwork'), findsOneWidget);
 
     // Chapter selection replaces free-text title field
-    await tester.tap(find.text('Select a chapter'));
+    await tester.tap(find.text('Select chapters'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Chapter 8'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Save Classwork'));
@@ -234,7 +237,7 @@ void main() {
     );
   });
 
-  testWidgets('timeline filter sheet excludes exam and marks types',
+  testWidgets('timeline filter sheet includes exam but excludes marks',
       (tester) async {
     await pumpShell(tester);
 
@@ -246,10 +249,10 @@ void main() {
 
     expect(find.text('Filter timeline'), findsOneWidget);
     // The timeline behind the sheet also labels its cards, so these are
-    // "at least one" — the assertion that matters is the two absences.
+    // "at least one" — the assertion that matters is the Marks absence.
     expect(find.text('Worksheet'), findsWidgets);
     expect(find.text('Classwork'), findsWidgets);
-    expect(find.text('Exam'), findsNothing);
+    expect(find.text('Exam'), findsWidgets);
     expect(find.text('Marks'), findsNothing);
   });
 

@@ -35,60 +35,65 @@ class ImageSlot extends StatelessWidget {
     final shape = BorderRadius.circular(radius);
     final ink = k.tx;
 
-    Widget content;
-    if (image != null) {
-      content = Image(image: image!, fit: BoxFit.cover);
-    } else {
-      content = Stack(
-        fit: StackFit.expand,
-        children: [
-          DecoratedBox(
+    Widget buildPlaceholder() => Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0x14808080),
+            borderRadius: shape,
+          ),
+          // The web component draws a 1.5px dashed ring at 35% of the
+          // inherited text colour; Flutter has no dashed BoxBorder.
+          child: DecoratedBox(
             decoration: BoxDecoration(
-              color: const Color(0x14808080),
               borderRadius: shape,
-            ),
-            // The web component draws a 1.5px dashed ring at 35% of the
-            // inherited text colour; Flutter has no dashed BoxBorder.
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: shape,
-                border: DashedBorder(color: ink.withValues(alpha: .35)),
-              ),
+              border: DashedBorder(color: ink.withValues(alpha: .35)),
             ),
           ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  StrokeIcon(
-                    AppIcons.imagePlaceholder,
-                    size: 22,
-                    color: ink.withValues(alpha: .45),
-                  ),
-                  if (showCaption && placeholder.trim().isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      placeholder,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.3,
-                        fontWeight: FontWeight.w500,
-                        color: ink.withValues(alpha: .75),
-                      ),
+        ),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                StrokeIcon(
+                  AppIcons.imagePlaceholder,
+                  size: 22,
+                  color: ink.withValues(alpha: .45),
+                ),
+                if (showCaption && placeholder.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    placeholder,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.3,
+                      fontWeight: FontWeight.w500,
+                      color: ink.withValues(alpha: .75),
                     ),
-                  ],
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
-        ],
-      );
-    }
+        ),
+      ],
+    );
+
+    // A failed/evicted load (corrupt file, 404, network drop) falls back to
+    // the same dashed placeholder instead of rendering blank.
+    final content = image != null
+        ? Image(
+            image: image!,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stack) => buildPlaceholder(),
+          )
+        : buildPlaceholder();
 
     Widget slot = ClipRRect(borderRadius: shape, child: content);
     if (onTap != null) {

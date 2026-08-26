@@ -176,11 +176,16 @@ abstract final class Map$ {
     'completedDate': r.completedDate == null
         ? null
         : Timestamp.fromDate(r.completedDate!),
-    'chapter': r.chapter,
+    'chapters': r.chapters,
     'notes': r.notes,
     'status': r.status.wire,
     'attachments': [for (final a in r.attachments) attachmentToMap(a)],
     'answerKey': r.answerKey == null ? null : attachmentToMap(r.answerKey!),
+    'hardWords': r.hardWords == null ? null : attachmentToMap(r.hardWords!),
+    'examType': r.examType,
+    'examTimetable': r.examTimetable == null
+        ? null
+        : attachmentToMap(r.examTimetable!),
     // Denormalised so the upload queue can find stranded records with one
     // query — Firestore cannot filter on a field inside an array of maps.
     'hasPendingUpload': r.sync != SyncState.synced,
@@ -194,6 +199,8 @@ abstract final class Map$ {
   static DiaryRecord recordFrom(DocumentSnapshot<Map<String, dynamic>> doc) {
     final m = doc.data() ?? const {};
     final answerKey = m['answerKey'];
+    final hardWords = m['hardWords'];
+    final examTimetable = m['examTimetable'];
     return DiaryRecord(
       id: doc.id,
       childId: str(m['childId']),
@@ -204,18 +211,35 @@ abstract final class Map$ {
       date: date(m['date']) ?? DateTime.now(),
       dueDate: date(m['dueDate']),
       completedDate: date(m['completedDate']),
-      chapter: str(m['chapter']),
+      chapters: chaptersFrom(m['chapters'] ?? m['chapter']),
       notes: str(m['notes']),
       status: WorksheetStatus.fromWire(m['status'] as String?),
       attachments: attachmentsFrom(m['attachments']),
       answerKey: answerKey is Map
           ? attachmentFrom(Map<String, dynamic>.from(answerKey))
           : null,
+      hardWords: hardWords is Map
+          ? attachmentFrom(Map<String, dynamic>.from(hardWords))
+          : null,
+      examType: str(m['examType']),
+      examTimetable: examTimetable is Map
+          ? attachmentFrom(Map<String, dynamic>.from(examTimetable))
+          : null,
       createdAt: date(m['createdAt']),
       updatedAt: date(m['updatedAt']),
       isDeleted: flag(m['isDeleted']),
       deletedAt: date(m['deletedAt']),
     );
+  }
+
+  /// Accepts the new `chapters` array, or falls back to the legacy single
+  /// `chapter` string field so old documents keep parsing.
+  static List<String> chaptersFrom(Object? value) {
+    if (value is List) {
+      return [for (final v in value) if (v is String && v.isNotEmpty) v];
+    }
+    if (value is String && value.isNotEmpty) return [value];
+    return const [];
   }
 
   /// Distinct lower-cased words from the fields §15 says search covers, so

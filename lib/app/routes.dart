@@ -6,6 +6,8 @@ import '../features/auth/login_page.dart';
 import '../features/children/child_setup_page.dart';
 import '../features/classwork/add_classwork_page.dart';
 import '../features/classwork/classwork_detail_page.dart';
+import '../features/exam/add_exam_page.dart';
+import '../features/exam/exam_detail_page.dart';
 import '../features/onboarding/onboarding_page.dart';
 import '../features/onboarding/splash_page.dart';
 import '../features/picker/picker_page.dart';
@@ -31,6 +33,8 @@ abstract final class Routes {
   static const worksheetDetail = '/worksheet';
   static const addClasswork = '/add-classwork';
   static const classworkDetail = '/classwork';
+  static const addExam = '/add-exam';
+  static const examDetail = '/exam';
   static const shareChooser = '/share-chooser';
   static const shareImage = '/share-image';
   static const attachAnswerKey = '/attach-answer-key';
@@ -62,6 +66,10 @@ abstract final class Routes {
         return page(AddClassworkPage(existing: settings.arguments as DiaryRecord?));
       case classworkDetail:
         return page(ClassworkDetailPage(recordId: settings.arguments! as String));
+      case addExam:
+        return page(AddExamPage(existing: settings.arguments as DiaryRecord?));
+      case examDetail:
+        return page(ExamDetailPage(recordId: settings.arguments! as String));
       case shareChooser:
         return page(
           ShareChooserPage(args: settings.arguments! as ShareImageArgs),

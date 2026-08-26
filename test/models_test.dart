@@ -18,7 +18,7 @@ void main() {
 
     test('fall back rather than throw on unknown input', () {
       // A document written by a future build must not break the timeline.
-      expect(RecordType.fromWire('exam'), RecordType.worksheet);
+      expect(RecordType.fromWire('quiz'), RecordType.worksheet);
       expect(WorksheetStatus.fromWire(null), WorksheetStatus.pending);
       expect(SyncState.fromWire('nonsense'), SyncState.synced);
     });

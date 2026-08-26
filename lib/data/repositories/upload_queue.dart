@@ -174,6 +174,12 @@ class UploadQueue extends ChangeNotifier {
       uploaded.add(await send(attachment));
     }
     final key = record.answerKey == null ? null : await send(record.answerKey!);
+    final hardWords = record.hardWords == null
+        ? null
+        : await send(record.hardWords!);
+    final examTimetable = record.examTimetable == null
+        ? null
+        : await send(record.examTimetable!);
 
     await _records.updateFiles(
       uid: job.uid,
@@ -181,9 +187,16 @@ class UploadQueue extends ChangeNotifier {
       recordId: record.id,
       attachments: uploaded,
       answerKey: key,
+      hardWords: hardWords,
+      examTimetable: examTimetable,
     );
 
-    final settled = record.copyWith(attachments: uploaded, answerKey: key);
+    final settled = record.copyWith(
+      attachments: uploaded,
+      answerKey: key,
+      hardWords: hardWords,
+      examTimetable: examTimetable,
+    );
 
     // Anything still pending lost its network rather than its file — requeue so
     // the next drain picks it up instead of stranding it. Bounded, so a file
