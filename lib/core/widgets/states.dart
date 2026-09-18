@@ -450,7 +450,7 @@ class _SkeletonsState extends State<Skeletons>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1400),
-  )..repeat(reverse: true);
+  );
 
   late final Animation<double> _opacity = Tween<double>(
     begin: .55,
@@ -458,14 +458,30 @@ class _SkeletonsState extends State<Skeletons>
   ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // "Remove animations" in the OS accessibility settings: hold the
+    // skeleton still at its resting opacity instead of pulsing.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.stop();
+      _controller.value = 1;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
+  // The fade is its own layer so the pulse repaints only the skeleton, not
+  // the header, chips and app bar that share its parent.
   @override
-  Widget build(BuildContext context) =>
-      FadeTransition(opacity: _opacity, child: widget.child);
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: FadeTransition(opacity: _opacity, child: widget.child),
+  );
 }
 
 /// A 1.5dp dashed rounded border — Flutter has no built-in dashed [BoxBorder].
