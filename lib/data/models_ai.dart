@@ -1260,6 +1260,139 @@ class GeneratedDoc {
   );
 }
 
+// ── Exam timetable (date sheet) ───────────────────────────────────────────
+
+/// One row of a photographed exam timetable: a subject on a day.
+class TimetableEntry {
+  const TimetableEntry({
+    required this.subject,
+    this.date,
+    this.startTime,
+    this.endTime,
+    this.notes = '',
+    this.confidence = 1,
+  });
+
+  /// As printed — mapped to the child's subject on the review screen.
+  final String subject;
+  final DateTime? date;
+
+  /// `(hour, minute)` when printed.
+  final (int, int)? startTime;
+  final (int, int)? endTime;
+  final String notes;
+  final double confidence;
+
+  bool get wantsReview => date == null || confidence < ScannedQuestion.reviewThreshold;
+
+  /// The exam moment: the date at its start time, or midnight when the
+  /// sheet gives no time.
+  DateTime? get startsAt {
+    final d = date;
+    if (d == null) return null;
+    final t = startTime;
+    return t == null ? d : DateTime(d.year, d.month, d.day, t.$1, t.$2);
+  }
+
+  TimetableEntry copyWith({String? subject, DateTime? date, (int, int)? startTime, (int, int)? endTime, String? notes, double? confidence}) =>
+      TimetableEntry(
+        subject: subject ?? this.subject,
+        date: date ?? this.date,
+        startTime: startTime ?? this.startTime,
+        endTime: endTime ?? this.endTime,
+        notes: notes ?? this.notes,
+        confidence: confidence ?? this.confidence,
+      );
+
+  Map<String, Object?> toJson() => {
+    'subject': subject,
+    'date': date == null ? null : _isoDay(date!),
+    'startTime': startTime == null ? null : _hhmm(startTime!),
+    'endTime': endTime == null ? null : _hhmm(endTime!),
+    'notes': notes,
+    'confidence': confidence,
+  };
+
+  static TimetableEntry? tryParse(Map<String, Object?> m) {
+    final subject = J.str(m['subject']).trim();
+    if (subject.isEmpty) return null;
+    return TimetableEntry(
+      subject: subject,
+      date: NoticeModelReading._isoDate(m['date']),
+      startTime: NoticeModelReading._time(m['startTime']),
+      endTime: NoticeModelReading._time(m['endTime']),
+      notes: J.str(m['notes']),
+      confidence: J.confidence(m['confidence']),
+    );
+  }
+
+  static String _isoDay(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  static String _hhmm((int, int) t) =>
+      '${t.$1.toString().padLeft(2, '0')}:${t.$2.toString().padLeft(2, '0')}';
+}
+
+/// A whole date sheet as the model read it. Rows without a subject are
+/// dropped and counted, like questions on a scanned paper.
+class TimetableExtraction {
+  const TimetableExtraction({
+    this.examLabel = '',
+    this.entries = const [],
+    this.confidence = 0,
+    this.droppedRows = 0,
+    this.unreadable = '',
+    this.model = '',
+  });
+
+  final String examLabel;
+  final List<TimetableEntry> entries;
+  final double confidence;
+  final int droppedRows;
+
+  /// What the model could not read, in its own words — shown, never hidden.
+  final String unreadable;
+  final String model;
+
+  bool get isEmpty => entries.isEmpty;
+
+  /// Entries in date order, undated last.
+  List<TimetableEntry> get sorted => [...entries]..sort((a, b) {
+    if (a.date == null) return b.date == null ? 0 : 1;
+    if (b.date == null) return -1;
+    return a.startsAt!.compareTo(b.startsAt!);
+  });
+
+  Map<String, Object?> toJson() => {
+    'examLabel': examLabel,
+    'entries': [for (final e in entries) e.toJson()],
+    'confidence': confidence,
+    'unreadable': unreadable,
+    'model': model,
+  };
+
+  factory TimetableExtraction.fromJson(Map<String, Object?> m) {
+    final raw = J.maps(m['entries']);
+    final entries = [for (final e in raw) ?TimetableEntry.tryParse(e)];
+    return TimetableExtraction(
+      examLabel: J.str(m['examLabel']).trim(),
+      entries: entries,
+      confidence: J.confidence(m['confidence'], 0),
+      droppedRows: raw.length - entries.length,
+      unreadable: J.str(m['unreadable']).trim(),
+      model: J.str(m['model']),
+    );
+  }
+
+  TimetableExtraction copyWith({String? model}) => TimetableExtraction(
+    examLabel: examLabel,
+    entries: entries,
+    confidence: confidence,
+    droppedRows: droppedRows,
+    unreadable: unreadable,
+    model: model ?? this.model,
+  );
+}
+
 // ── prompt 03 §C stage 2 ──────────────────────────────────────────────────
 
 /// What the classification model said about one notice. Dates are kept as

@@ -390,6 +390,55 @@ class AiService {
     );
   }
 
+  // ── exam timetable ───────────────────────────────────────────────────────
+
+  /// Reads a photographed date sheet with the vision model. The review
+  /// screen maps subjects and checks dates; nothing is saved from here.
+  Future<TimetableExtraction> scanTimetable({
+    required List<AiSourceFile> pages,
+    required Child child,
+    required List<String> subjects,
+    DateTime? today,
+    CancellationToken? cancel,
+    AiStage? onStage,
+  }) async {
+    final model = _modelFor(AiTask.vision);
+    final now = today ?? DateTime.now();
+    final system = AiPrompts.timetable(
+      grade: AiRedaction.gradeContext(child),
+      subjects: subjects,
+      today: '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+    );
+    _assertClean(system, child);
+    final result = await _run('scanTimetable', model, () {
+      onStage?.call('Preparing the image…');
+      return _client.withKey((key) async {
+        final parts = await AiAttachments.toParts(
+          pages,
+          client: _client,
+          key: key,
+          cancel: cancel,
+        );
+        onStage?.call('Reading the timetable…');
+        return _client.generate(
+          GeminiRequest(
+            model: model,
+            systemInstruction: system,
+            parts: [const TextPart('The timetable follows.'), ...parts],
+            responseSchema: GeminiSchemas.timetable,
+            temperature: 0.1,
+            maxOutputTokens: 4096,
+            timeout: const Duration(seconds: 90),
+          ),
+          parse: TimetableExtraction.fromJson,
+          cancel: cancel,
+          key: key,
+        );
+      }, cancel: cancel);
+    });
+    return result.value.copyWith(model: result.model);
+  }
+
   // ── prompt 03 §C stage 2 ────────────────────────────────────────────────
 
   /// Classifies up to ten notices in one call with the cheap classification

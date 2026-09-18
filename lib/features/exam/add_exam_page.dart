@@ -16,6 +16,7 @@ import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
 import '../../data/repositories/attachment_repository.dart';
+import '../ai/scan_timetable_page.dart';
 import '../picker/attachment_source_row.dart';
 import '../picker/picker_page.dart';
 
@@ -40,6 +41,10 @@ class _AddExamPageState extends State<AddExamPage> {
   late DateTime _date =
       widget.existing?.date ?? DateUtils.dateOnly(DateTime.now());
   late Attachment? _timetable = widget.existing?.examTimetable;
+
+  /// Rows read off the timetable by Gemini and confirmed by the parent.
+  /// The first fills the form; the rest become sibling exam records on save.
+  TimetableReview? _timetableReview;
   late final List<Attachment> _previousPapers =
       List.of(widget.existing?.attachments ?? const []);
 
@@ -123,8 +128,39 @@ class _AddExamPageState extends State<AddExamPage> {
     });
   }
 
+  /// "Read timetable with AI": Gemini reads the date sheet, the parent maps
+  /// rows to subjects, and the form fills itself from the first row.
+  Future<void> _readTimetable() async {
+    final timetable = _timetable;
+    if (timetable == null) return;
+    final review = await Navigator.of(context, rootNavigator: true).pushNamed<TimetableReview>(
+      Routes.scanTimetable,
+      arguments: ScanTimetableArgs(timetable: timetable, examTypeHint: _examType.text.trim()),
+    );
+    if (review == null || !mounted || review.rows.isEmpty) return;
+    setState(() {
+      _timetableReview = review;
+      if (review.examLabel.isNotEmpty) _examType.text = review.examLabel;
+      final first = review.rows.first;
+      _subject = first.subject;
+      _date = DateUtils.dateOnly(first.date);
+    });
+    AppToast.show(
+      context,
+      title: '${review.rows.length} exam${review.rows.length == 1 ? '' : 's'} ready',
+      description: review.rows.length == 1
+          ? 'The form is filled in from the timetable.'
+          : 'Saving creates one exam per subject, each with its date.',
+      actionLabel: 'OK',
+    );
+  }
+
   Future<void> _save() async {
     if (!_canSave) return;
+    final review = _timetableReview;
+    if (review != null && review.rows.length > 1 && !_isEditing) {
+      return _saveTimetable(review);
+    }
     setState(() => _saving = true);
 
     final state = AppScope.read(context);
@@ -165,6 +201,38 @@ class _AddExamPageState extends State<AddExamPage> {
       if (!mounted) return;
       setState(() => _saving = false);
       AppToast.failure(context, error, title: "Couldn't save exam");
+    }
+  }
+
+  /// One record per timetable row, all sharing the timetable image and the
+  /// full schedule in their notes; reminders arm per exam date.
+  Future<void> _saveTimetable(TimetableReview review) async {
+    setState(() => _saving = true);
+    final state = AppScope.read(context);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final examType = _examType.text.trim();
+    try {
+      final saved = await state.saveTimetableExams(
+        entries: [for (final r in review.rows) (subject: r.subject, date: DateUtils.dateOnly(r.date))],
+        examType: examType,
+        timetable: _timetable!,
+        previousPapers: _previousPapers,
+        scheduleNotes: review.scheduleNotes,
+        model: review.model,
+      );
+      if (!mounted) return;
+      navigator.pop(saved.first);
+      AppToast.showOn(
+        messenger,
+        context,
+        title: '${saved.length} exams saved',
+        description: '$examType · ${saved.map((r) => r.subject).join(', ')}. Reminders set for each date.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppToast.failure(context, error, title: "Couldn't save the exams");
     }
   }
 
@@ -270,6 +338,28 @@ class _AddExamPageState extends State<AddExamPage> {
                       showFiles: false,
                       onPick: _pickTimetable,
                     ),
+                  if (_timetable != null && state.aiAvailable && !_isEditing) ...[
+                    const SizedBox(height: 10),
+                    AppTonalButton(
+                      label: _timetableReview == null
+                          ? 'Read timetable with AI'
+                          : 'Read again (${_timetableReview!.rows.length} exam${_timetableReview!.rows.length == 1 ? '' : 's'} set)',
+                      height: 48,
+                      borderRadius: 14,
+                      background: k.priC,
+                      hoverBackground: k.priCH,
+                      foreground: k.priInk,
+                      icon: StrokeIcon(AppIcons.sparkle, size: 18, color: k.priInk),
+                      onPressed: _saving ? null : _readTimetable,
+                    ),
+                    if (_timetableReview != null && _timetableReview!.rows.length > 1) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _timetableReview!.scheduleNotes,
+                        style: TextStyle(fontSize: 12, height: 1.5, color: k.tx3),
+                      ),
+                    ],
+                  ],
                   const SizedBox(height: 18),
                   Row(
                     children: [
@@ -350,7 +440,11 @@ class _AddExamPageState extends State<AddExamPage> {
               child: AppFilledButton(
                 label: _saving
                     ? 'Saving…'
-                    : (_isEditing ? 'Save Changes' : 'Save Exam'),
+                    : _isEditing
+                        ? 'Save Changes'
+                        : (_timetableReview != null && _timetableReview!.rows.length > 1
+                            ? 'Save ${_timetableReview!.rows.length} Exams'
+                            : 'Save Exam'),
                 onPressed: _canSave ? _save : null,
               ),
             ),

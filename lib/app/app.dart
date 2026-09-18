@@ -88,6 +88,11 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp>
         Routes.noticeDetail,
         arguments: payload.substring(NotificationService.noticePayloadPrefix.length),
       );
+    } else if (payload.startsWith(NotificationService.examPayloadPrefix)) {
+      navigator.pushNamed(
+        Routes.examDetail,
+        arguments: payload.substring(NotificationService.examPayloadPrefix.length),
+      );
     } else {
       navigator.pushNamed(Routes.worksheetDetail, arguments: payload);
     }

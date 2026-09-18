@@ -104,6 +104,7 @@ their own Google AI Studio key — several, if they like.
 | Grade a completed paper, save as a result | Exam detail → Grade this paper | `grade_paper_page.dart` |
 | Report card → `ExamResult` (needs review) | Add marks header, shared image → "Scan as report card" | `scan_result_page.dart` |
 | Focus plan (explains the deterministic verdict) | Performance → Needs attention → Focus plan | `focus_plan_page.dart` |
+| Exam timetable → one exam per subject, each with its date and reminders | Add Exam → attach the timetable → Read timetable with AI | `scan_timetable_page.dart` |
 
 **Keys** live in the platform keystore (`flutter_secure_storage`, one JSON
 blob under `ai.keys.v1`), never in preferences, Firestore or a log line, and
@@ -133,6 +134,17 @@ debug on every request and in `ai_redaction_test.dart`). The activity log
 counts, duration and outcome — never content. Telemetry gets feature, model
 and failure kind only. **Revoke** wipes keys, cached file URIs, the log,
 consent and the switch.
+
+**Timetable reading.** With a timetable image attached and AI on, the Add
+Exam form offers *Read timetable with AI*. The vision model returns one row
+per subject per day (`TimetableExtraction`); the review screen maps each
+printed subject to the child's own (`SubjectMatcher`), lets the parent fix a
+date or drop a row, and hands the rows back to the form. Saving then creates
+one exam record per row — same timetable image, the whole date sheet in the
+notes, `origin: ai` — and arms exam reminders (7/3/1 days before and the
+morning of, on the school-notices channel) for every one of them. Exam
+reminders are armed for every exam record saved, not only AI-read ones, and
+cancelled on delete.
 
 **What the model never does.** It never decides who is weak — that stays
 `subject_insights.dart`, and the focus plan only explains its output. It
@@ -330,7 +342,7 @@ cannot start.
 flutter test
 ```
 
-318 tests, no network (316 green; the two "saving a worksheet/classwork puts it on the timeline" smoke tests fail on the pre-`02` baseline too):
+322 tests, no network (320 green; the two "saving a worksheet/classwork puts it on the timeline" smoke tests fail on the pre-`02` baseline too):
 
 | File | Covers |
 | --- | --- |
@@ -355,6 +367,7 @@ flutter test
 | `notice_reminder_test.dart` | offsets per kind, the timed-notice hour-before rule, the four-per-notice cap, past moments dropped, every auto-arm threshold, the weekly cap, stage-2 date validation; through `AppState`: auto-arm + announce + undo, ignore cancels, a past date never arms, a refusing scheduler leaves the inbox honest, confirm remembers the app → child mapping, convert saves a worksheet |
 | `notice_capture_service_test.dart` | the SHA-1 helper against reference vectors, the device-independent hash, batch dedupe keeping the longer body, buffer overflow drops the oldest, same-key update replaces, unsupported platform never touches the channel; through `AppState`: drain is idempotent across drains and across a cold start, per-app rules, capture off drains nothing, truncated bodies |
 | `notice_repository_test.dart` | hash-derived ids, full round trip, watch order and soft-delete filter, retention purge, delete all, validation, the 4000-char cap and defensive reads |
+| `timetable_test.dart` | the timetable fixture parses, rows without a subject are dropped and counted, undated rows sort last; `saveTimetableExams` creates one exam per row sharing the timetable image with distinct attachment ids and the schedule in the notes |
 | `notice_widgets_test.dart` | inbox empty state in both themes, capture-off state, a low-confidence notice sits unarmed until Confirm is tapped, the settings screen and the More rows hide themselves on iOS and show on Android |
 
 Two of those exist because the first device run found what the suite had missed.

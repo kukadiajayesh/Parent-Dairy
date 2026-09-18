@@ -1,0 +1,11 @@
+{
+  "examLabel": "Half Yearly Examination", "confidence": 0.86,
+  "entries": [
+    {"subject": "Maths", "date": "2026-10-05", "startTime": "09:00", "endTime": "11:00", "notes": "Ch 1-6", "confidence": 0.95},
+    {"subject": "English", "date": "2026-10-07", "startTime": null, "endTime": null, "notes": "", "confidence": 0.9},
+    {"subject": "EVS", "date": null, "startTime": "09:00", "endTime": null, "notes": "date smudged", "confidence": 0.4},
+    {"subject": "", "date": "2026-10-09", "startTime": null, "endTime": null, "notes": "study leave", "confidence": 0.8},
+    {"subject": "Hindi", "date": "2026-10-06", "startTime": "9:30", "endTime": "11:30", "notes": "", "confidence": 0.88}
+  ],
+  "unreadable": "the last row is cut off"
+}

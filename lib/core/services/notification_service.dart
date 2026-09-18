@@ -231,6 +231,84 @@ class NotificationService implements NoticeReminderScheduler {
     }
   }
 
+  // ── Exam reminders ──────────────────────────────────────────────────────
+
+  /// Reminds about an exam record on the school-notices channel, at the
+  /// exam offsets (7/3/1 days before and the morning of, by default).
+  /// Replaces any previous set for the record; a past exam schedules
+  /// nothing.
+  Future<void> scheduleExamReminders(
+    DiaryRecord record, {
+    Map<NoticeKind, List<int>>? offsets,
+  }) async {
+    if (!_ready) return;
+    await cancelExamReminders(record.id);
+    if (!PrefsService.instance.remindersEnabled) return;
+    if (!record.isExam || record.isDeleted) return;
+    final extraction = NoticeExtraction(
+      kind: NoticeKind.exam,
+      title: record.title,
+      subject: record.subject,
+      eventAt: record.date,
+      allDay: record.date.hour == 0 && record.date.minute == 0,
+      confidence: 1,
+    );
+    final times = NoticeReminders.timesFor(extraction, now: DateTime.now(), offsets: offsets);
+    final now = tz.TZDateTime.now(tz.local);
+    for (var i = 0; i < times.length; i++) {
+      final t = times[i];
+      final when = tz.TZDateTime(tz.local, t.year, t.month, t.day, t.hour, t.minute);
+      if (!when.isAfter(now)) continue;
+      final dayDiff = DateTime(record.date.year, record.date.month, record.date.day)
+          .difference(DateTime(t.year, t.month, t.day))
+          .inDays;
+      final title = switch (dayDiff) {
+        <= 0 => '${record.subject} exam today',
+        1 => '${record.subject} exam tomorrow',
+        _ => '${record.subject} exam in $dayDiff days',
+      };
+      try {
+        await _plugin.zonedSchedule(
+          id: _examIdFor(record.id, i),
+          title: title,
+          body: record.examType.isEmpty ? record.title : record.examType,
+          scheduledDate: when,
+          androidScheduleMode: _exactAllowed == true
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              : AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: '$examPayloadPrefix${record.id}',
+          notificationDetails: const NotificationDetails(
+            android: AndroidNotificationDetails(
+              noticeChannelId,
+              _noticeChannelName,
+              channelDescription: _noticeChannelDescription,
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(),
+          ),
+        );
+      } catch (_) {}
+    }
+  }
+
+  Future<void> cancelExamReminders(String recordId) async {
+    if (!_ready) return;
+    for (var i = 0; i < NoticeReminders.maxPerNotice; i++) {
+      try {
+        await _plugin.cancel(id: _examIdFor(recordId, i));
+      } catch (_) {}
+    }
+  }
+
+  /// Payload prefix for a tap on an exam reminder.
+  static const examPayloadPrefix = 'exam:';
+
+  /// A separate id space from notices and worksheets: the record id hashed
+  /// into 27 bits, a slot in the low three, and the top bit set.
+  static int _examIdFor(String recordId, int slot) =>
+      0x40000000 | ((recordId.hashCode & 0x07FFFFFF) << 3) | (slot & 0x7);
+
   // ── School notices (prompt 03 §D) ───────────────────────────────────────
 
   /// Asks Android 13+ for the exact-alarm permission. Returns whether it

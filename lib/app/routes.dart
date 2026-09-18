@@ -12,6 +12,7 @@ import '../features/ai/grade_paper_page.dart';
 import '../features/ai/paper_preview_page.dart';
 import '../features/ai/scan_paper_page.dart';
 import '../features/ai/scan_result_page.dart';
+import '../features/ai/scan_timetable_page.dart';
 import '../features/auth/login_page.dart';
 import '../features/children/child_setup_page.dart';
 import '../features/classwork/add_classwork_page.dart';
@@ -72,6 +73,7 @@ abstract final class Routes {
   static const gradePaper = '/ai/grade-paper';
   static const scanResult = '/ai/scan-result';
   static const focusPlan = '/ai/focus-plan';
+  static const scanTimetable = '/ai/scan-timetable';
 
   // Notification capture (prompt 03) — Android only; the screens render an
   // "Android only" state elsewhere rather than being unreachable.
@@ -165,6 +167,10 @@ abstract final class Routes {
         );
       case focusPlan:
         return page(const FocusPlanPage());
+      case scanTimetable:
+        return page<TimetableReview>(
+          ScanTimetablePage(args: settings.arguments! as ScanTimetableArgs),
+        );
       case notices:
         return page(NoticesPage(initialTab: settings.arguments as int? ?? 0));
       case noticeDetail:

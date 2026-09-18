@@ -135,6 +135,23 @@ abstract final class AiPrompts {
       'Keep the summary to two or three sentences. Do not mention the student '
       'by name.\n\n$_honesty';
 
+  /// A photographed exam timetable / date sheet → one row per subject per
+  /// day. Dates are day-first; a missing year is resolved from today.
+  static String timetable({required String grade, required List<String> subjects, required String today}) =>
+      'You are reading a photographed school exam timetable (date sheet) for '
+      'a $grade student in India. Today is $today. Extract the exam name from '
+      'the header (e.g. "Unit Test 2", "Half Yearly Examination") and one '
+      'entry per subject per day: the subject exactly as printed, the date '
+      'as YYYY-MM-DD, the start and end time as HH:MM (24-hour) when printed, '
+      'and any note on that row (room, syllabus, "practical"). Read dates '
+      'day-first: 24/11 is 24 November. When the year is not printed, use the '
+      'next occurrence on or after today. Rows for holidays, study leave or '
+      'breaks are not exams — leave them out. The student\'s subjects are: '
+      '${subjects.isEmpty ? 'not known' : subjects.join(', ')} — keep the '
+      'printed name anyway; matching is done later. Give a confidence per '
+      'row and one overall. Put anything you could not read under '
+      'unreadable.\n\n$_honesty';
+
   /// Prompt 03 §C stage 2. The rules already failed to read these; the
   /// model gets the same anchors (posted date, the child's subject names)
   /// and the same honesty rule. Dates are day-first, Indian convention.

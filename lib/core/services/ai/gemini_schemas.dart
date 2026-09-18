@@ -154,6 +154,24 @@ abstract final class GeminiSchemas {
     ),
   }, required: ['examLabel', 'scores']);
 
+  // ── exam timetable (date sheet) ─────────────────────────────────────────
+
+  static final Map<String, Object?> timetable = _obj({
+    'examLabel': _str,
+    'confidence': _num,
+    'entries': _arr(
+      _obj({
+        'subject': _str,
+        'date': _strN,
+        'startTime': _strN,
+        'endTime': _strN,
+        'notes': _str,
+        'confidence': _num,
+      }, required: ['subject', 'confidence']),
+    ),
+    'unreadable': _str,
+  }, required: ['examLabel', 'entries', 'confidence']);
+
   // ── prompt 03 §C stage 2: notice classification ─────────────────────────
 
   /// One reply covers a batch of up to ten notices, matched back by `id`.

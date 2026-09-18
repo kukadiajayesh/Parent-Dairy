@@ -788,6 +788,51 @@ class AppState extends ChangeNotifier {
     unawaited(
       NotificationService.instance.scheduleWorksheetReminder(saved),
     );
+    // An exam reminds at the exam offsets on the school-notices channel,
+    // whether it was typed in, converted from a notice or read off a
+    // timetable.
+    if (saved.isExam) {
+      unawaited(
+        NotificationService.instance.scheduleExamReminders(saved, offsets: noticeOffsets),
+      );
+    }
+    return saved;
+  }
+
+  /// One exam record per timetable row (the Add Exam form's "read with AI"
+  /// path): every record carries the same timetable image and the whole
+  /// date sheet in its notes, so any one of them shows the full schedule.
+  Future<List<DiaryRecord>> saveTimetableExams({
+    required List<({String subject, DateTime date})> entries,
+    required String examType,
+    required Attachment timetable,
+    List<Attachment> previousPapers = const [],
+    String scheduleNotes = '',
+    String model = '',
+  }) async {
+    final saved = <DiaryRecord>[];
+    for (final e in entries) {
+      final record = await saveRecord(
+        DiaryRecord(
+          id: '',
+          type: RecordType.exam,
+          subject: e.subject,
+          title: examType,
+          examType: examType,
+          date: e.date,
+          // A fresh id per record: the file is uploaded under each record's
+          // own folder, so one shared attachment id would collide.
+          examTimetable: timetable.copyWith(id: '${timetable.id}-${saved.length}'),
+          attachments: saved.isEmpty ? previousPapers : const [],
+          notes: [
+            if (model.isNotEmpty) 'Timetable read by $model — check the dates.',
+            if (scheduleNotes.isNotEmpty) scheduleNotes,
+          ].join('\n'),
+          origin: model.isEmpty ? RecordOrigin.manual : RecordOrigin.ai,
+        ),
+      );
+      saved.add(record);
+    }
     return saved;
   }
 
@@ -800,6 +845,7 @@ class AppState extends ChangeNotifier {
     final record = recordById(id);
     await _recordRepo.softDelete(uid: uid, childId: childId, recordId: id);
     unawaited(NotificationService.instance.cancelWorksheetReminder(id));
+    unawaited(NotificationService.instance.cancelExamReminders(id));
     if (record != null) {
       unawaited(_yearRepo.bumpRecordCount(uid, record.academicYearId, -1));
       unawaited(Telemetry.recordDeleted(record.type.wire));
