@@ -155,8 +155,13 @@ void main() {
     // More: the one AI row that exists is the settings entry, reading Off.
     await tester.tap(find.text('More'));
     await tester.pumpAndSettle();
+    // The AI group sits below the School notices group (prompt 03), off the
+    // first screen at phone height.
+    await tester.scrollUntilVisible(find.text('Gemini AI'), 200);
+    await tester.pumpAndSettle();
     expect(find.text('Gemini AI'), findsOneWidget);
-    expect(find.text('Off'), findsOneWidget);
+    // Two "Off" values: Gemini AI and Notification capture (prompt 03).
+    expect(find.text('Off'), findsNWidgets(2));
   });
 
   testWidgets('with AI off, the Add sheet and Subject page carry no AI rows', (tester) async {

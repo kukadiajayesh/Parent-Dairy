@@ -154,6 +154,27 @@ abstract final class GeminiSchemas {
     ),
   }, required: ['examLabel', 'scores']);
 
+  // ── prompt 03 §C stage 2: notice classification ─────────────────────────
+
+  /// One reply covers a batch of up to ten notices, matched back by `id`.
+  /// Dates are ISO strings the Dart side validates before trusting.
+  static final Map<String, Object?> noticeExtraction = _obj({
+    'notices': _arr(
+      _obj({
+        'id': _str,
+        'kind': _enum(['exam', 'assignment', 'activity', 'holiday', 'fee', 'meeting', 'announcement', 'unknown']),
+        'title': _str,
+        'subject': _strN,
+        'eventDate': _strN,
+        'eventTime': _strN,
+        'endDate': _strN,
+        'dueDate': _strN,
+        'confidence': _num,
+        'reasoning': _str,
+      }, required: ['id', 'kind', 'title', 'confidence', 'reasoning']),
+    ),
+  }, required: ['notices']);
+
   // ── §F focus plan ───────────────────────────────────────────────────────
 
   static final Map<String, Object?> focusPlan = _obj({

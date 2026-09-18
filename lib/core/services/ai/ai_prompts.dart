@@ -135,6 +135,24 @@ abstract final class AiPrompts {
       'Keep the summary to two or three sentences. Do not mention the student '
       'by name.\n\n$_honesty';
 
+  /// Prompt 03 §C stage 2. The rules already failed to read these; the
+  /// model gets the same anchors (posted date, the child's subject names)
+  /// and the same honesty rule. Dates are day-first, Indian convention.
+  static String classifyNotices({required String grade, required List<String> subjects}) =>
+      'You are reading notifications posted by a school app for a $grade '
+      'student, in India. Each item gives the notification title, its text '
+      'and the date it was posted (postedAt). For each item say what it is '
+      'about (kind), give a short clean title, the subject if one of these '
+      'is named or abbreviated (${subjects.isEmpty ? 'none known' : subjects.join(', ')}; '
+      'otherwise null), the event date and, for assignments and fees, the '
+      'due date. Read dates day-first: 24/11 is 24 November. Resolve '
+      '"tomorrow", "next Monday" and a missing year from postedAt. Return '
+      'ISO dates (YYYY-MM-DD) and 24-hour times (HH:MM), or null when the '
+      'text does not say. Notices may be in Hindi, Gujarati or a mix; read '
+      'them as they are and keep the title in the same language. Give a '
+      'confidence between 0 and 1 for the kind and date together, and one '
+      'sentence of reasoning.\n\n$_honesty';
+
   /// The insight objects, serialised for [focusPlan]. Only numbers and the
   /// reasons already shown in the app — no attachments, no names.
   static Map<String, Object?> insightsJson(

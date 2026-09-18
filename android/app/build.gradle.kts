@@ -48,6 +48,11 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    // NotificationManagerCompat.getEnabledListenerPackages — the supported
+    // way to ask whether notification access is granted (prompt 03 §A).
+    // Already on the classpath through flutter_local_notifications; pinned
+    // explicitly so the plugin cannot silently take it away.
+    implementation("androidx.core:core-ktx:1.13.1")
 }
 
 kotlin {

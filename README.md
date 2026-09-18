@@ -149,6 +149,99 @@ them in `users/{uid}/children/{childId}/generated`.
 live `models.list` (cached 24 h); the constants in `ai_models.dart` are only
 the fallback and were checked against ai.google.dev on 19 Sep 2026.
 
+## Notification capture (prompt `03`)
+
+**Android only.** The school app (Campus Care 10x and the like) posts "Unit
+Test 2 — Science — 24 Nov"; the parent reads it on the lock screen and
+forgets it. With **More → Notification capture** on, Academic Diary reads
+the notifications of the apps the parent ticks — and only those — pulls out
+what kind of event it is and when, and arms a reminder. On iOS
+`NoticeCaptureService.isSupported` is false and every surface renders an
+"Android only" state; nothing is faked.
+
+| Surface | Where |
+| --- | --- |
+| Inbox / Upcoming / All, swipe to ignore | More → Notices (`notices_page.dart`) |
+| Full text with matched phrases, editable kind/date/subject/child, per-reminder toggles, Confirm, Convert, Ignore, Undo | `notice_detail_page.dart` |
+| Master switch, permission state, watched apps, per-app rule, reminder offsets, retention, delete all | More → Notification capture (`notice_settings_page.dart`, `watched_apps_page.dart`) |
+| §H disclosure, shown before the system permission screen | `notice_disclosure_page.dart` |
+| "Upcoming from school" strip | Home, only when a confirmed notice falls in the next 14 days |
+
+**Native side** (`android/…/notifications/`). `DiaryNotificationListener`
+is a `NotificationListenerService` that runs when Flutter is not: it returns
+immediately unless the package is in the opt-in set (a dedicated
+`SharedPreferences` file the Dart side writes), skips ongoing, group-summary,
+local-only, media and progress notifications and anything with no text,
+reads title / text / big text / text lines / sub text / info text, hashes
+`sha1(packageName|title|body|yyyy-MM-dd)` and appends to a 500-entry JSON
+ring buffer (`NoticeBuffer`) — replacing a buffered entry that shares the
+notification key or the hash, keeping the longer body. Bodies are cut at
+4000 chars with a `truncated` flag. It never touches Firestore.
+`NotificationCapturePlugin` is the `com.parent.academic.diary/notifications`
+channel (`isSupported`, `isGranted`, `isListenerConnected`, `openSettings`,
+`installedApps` with 48dp icons off the main thread, `setWatchedPackages`,
+`drainBuffer`, `bufferSize`, `lastCaptureAt`), registered from
+`MainActivity`.
+
+**Dart side.** `NoticeCaptureService` wraps the channel behind a
+`NoticeCapturePlatform` seam (a fake for tests). `AppState.drainNotices`
+runs on start and on every `AppLifecycleState.resumed`, re-checks the
+permission (the OS or a battery manager can revoke it silently), dedupes
+every hash against stored notices, applies the per-app rule (capture all /
+only when it looks like a notice / off), runs the extractor and the
+auto-arm policy, and writes `users/{uid}/notices/{hash}` — the document id
+*is* the hash, so the same notice on two phones is one document. Notices
+older than the retention setting (180 days by default) are purged once per
+sign-in, and "Delete all" really deletes: this is other people's text.
+
+**Extraction** (`data/analytics/notice_extractor.dart`, pure Dart) reads
+dates day-first in every format the prompt lists — `24/11/2026`,
+`24-11-26`, `24 Nov`, `24th November`, `November 24`, `Mon 24 Nov`, bare
+`24.11`, ranges (`24 Nov to 2 Dec`, `24–26 November`), relative (`today`,
+`tomorrow`, `day after tomorrow`, `next Monday`, `this Friday`, `by Friday`,
+`in 3 days`) and times (`9 am`, `09:00`, `9.30am`, `2 PM onwards`). A
+missing year resolves to the next occurrence within eleven months, else
+stays in the current year as a past date. Kind comes from weighted keyword
+lists; subject is matched against the child's own subjects and the usual
+shorthands. Confidence is **0.9** with a kind and an absolute date, **0.7**
+with a relative date, **0.5** with a kind and no date, **0.3** otherwise;
+two candidate dates cap it at 0.6 and a non-Latin notice at 0.3. Stage 2
+sends notices the rules read below 0.7 to the `classification` model (with
+AI on, consented and keyed), scrubbed of every child's identifiers, at most
+50 calls a day and ten notices a call; a model date in the past or more
+than a year out is discarded. Falling back is normal, not an error.
+
+**Reminders** (`data/analytics/notice_reminders.dart`) go on a second
+channel, `notice_reminders`. Defaults: exam 7/3/1 days before and the
+morning of; assignment, activity, meeting 1 day before and the morning of;
+holiday the morning of; fee 3 days before and the morning of — all at
+07:00, except that a timed notice's morning-of reminder fires an hour
+before the event. Editable per kind in settings and per notice before
+confirming; at most four per notice. **Auto-arm:** confidence ≥ 0.8, a
+resolved future date, a single candidate date, and an exam / assignment /
+activity / meeting kind → scheduled immediately with a "Reminder added from
+{app}" notification and a 24-hour Undo; 0.5–0.8, a past date, two dates or
+any other kind → inbox; below 0.5 → stored only; more than 20 auto-armed a
+week → inbox. Ignore, delete and conversion cancel the alarms. Exact alarms
+are requested (`SCHEDULE_EXACT_ALARM`); refused, reminders fall back to
+inexact and settings say so.
+
+**Convert to record.** An assignment becomes a worksheet in one tap (due
+date filled, notice text as notes, `origin: notification`). An exam opens
+the Add Exam form prefilled, because an exam record needs its timetable
+image, and links back once saved.
+
+**Deploying the shape.** The rules carry a `notices` block (body ≤ 4000,
+owner may delete) and the indexes file one `notices` index:
+
+```sh
+firebase deploy --only firestore:rules,firestore:indexes
+```
+
+**Play Console.** Shipping this needs the *Notification listener* permission
+declaration filled in, and the §H copy (in `notice_disclosure_page.dart`)
+repeated in the privacy policy. Neither is done in this repo.
+
 ## Structure
 
 ```
@@ -158,7 +251,8 @@ lib/
     config/       kShowExamMarks, kAiEnabled, kAiConsentVersion, GradeScale
     errors/       AppFailure — every SDK exception mapped to parent-readable text
     services/     auth-adjacent platform work: prefs, connectivity, images,
-                  attachment actions, notifications, share intents, telemetry
+                  attachment actions, notifications, share intents, telemetry,
+                  notice capture (the Android listener's channel)
     services/ai/  Gemini: key store, REST client, schemas, prompts, redaction,
                   attachment prep, activity log, subject matcher, paper PDF
     theme/        design tokens (light + dark), ThemeData, subject hues
@@ -170,12 +264,19 @@ lib/
                          ReportCardExtraction, FocusPlan, GeneratedDoc — pure Dart
     mappers.dart         Firestore ⇄ model conversion
     firestore_paths.dart every collection path in one place
-    analytics/           subject_insights.dart — the weak-subject rule, pure Dart
+    analytics/           subject_insights.dart — the weak-subject rule;
+                         notice_extractor.dart, notice_reminders.dart — the
+                         notice rules and the auto-arm policy; all pure Dart
     repositories/        auth, child, subject, year, record, result, generated,
-                         attachment, uploads
+                         notice, attachment, uploads
     app_state.dart       the one ChangeNotifier the screens read
   features/       one directory per screen family (performance/ and result/
-                  are the marks screens; ai/ holds every Gemini screen)
+                  are the marks screens; ai/ holds every Gemini screen;
+                  notices/ the captured-notice screens)
+android/app/src/main/kotlin/…/notifications/
+                  DiaryNotificationListener (NotificationListenerService),
+                  NoticeBuffer (opt-in set + 500-entry ring buffer),
+                  NotificationCapturePlugin (the method channel)
   shell/          four-tab frame (Home / Timeline / Performance / More) and
                   the Add sheet
 ```
@@ -229,7 +330,7 @@ cannot start.
 flutter test
 ```
 
-226 tests, no network:
+318 tests, no network (316 green; the two "saving a worksheet/classwork puts it on the timeline" smoke tests fail on the pre-`02` baseline too):
 
 | File | Covers |
 | --- | --- |
@@ -250,6 +351,11 @@ flutter test
 | `generated_repository_test.dart` | save, link, watch newest-first, soft delete, validation |
 | `subject_matcher_test.dart` | "Maths" → Mathematics, "EVS" → Environmental Studies, typos, unknowns |
 | `ai_settings_test.dart` | settings with zero keys shows the empty state; the switch persists; with AI off no entry point is reachable from Home, Subject, Performance or the Add sheet; with it on they appear |
+| `notice_extractor_test.dart` | the fixture corpus — 41 realistic school notifications covering every kind, every date format, ranges, relative dates, missing years, two dates in one message, no date, Hindi and Gujarati script — asserting kind, date, time, confidence, subject and ambiguity for each; plus the this/next weekday rule, day-first numerics and title cleaning |
+| `notice_reminder_test.dart` | offsets per kind, the timed-notice hour-before rule, the four-per-notice cap, past moments dropped, every auto-arm threshold, the weekly cap, stage-2 date validation; through `AppState`: auto-arm + announce + undo, ignore cancels, a past date never arms, a refusing scheduler leaves the inbox honest, confirm remembers the app → child mapping, convert saves a worksheet |
+| `notice_capture_service_test.dart` | the SHA-1 helper against reference vectors, the device-independent hash, batch dedupe keeping the longer body, buffer overflow drops the oldest, same-key update replaces, unsupported platform never touches the channel; through `AppState`: drain is idempotent across drains and across a cold start, per-app rules, capture off drains nothing, truncated bodies |
+| `notice_repository_test.dart` | hash-derived ids, full round trip, watch order and soft-delete filter, retention purge, delete all, validation, the 4000-char cap and defensive reads |
+| `notice_widgets_test.dart` | inbox empty state in both themes, capture-off state, a low-confidence notice sits unarmed until Confirm is tapped, the settings screen and the More rows hide themselves on iOS and show on Android |
 
 Two of those exist because the first device run found what the suite had missed.
 The viewport is pinned to 411.4dp — at the 432dp it used to use, a horizontal
@@ -276,14 +382,26 @@ layout, not assertions.
   minor-versioned `android-37.0` platform, so the plain `android-37` hash never
   resolves.
 - Core library desugaring is on — `flutter_local_notifications` needs it.
+- The manifest now declares the plugin's `ScheduledNotificationReceiver` and
+  `ScheduledNotificationBootReceiver`. Since v16 the plugin no longer
+  declares them itself; without the first a scheduled reminder never fires,
+  without the second every reminder is lost on reboot. Both worksheet and
+  notice reminders depend on them.
+- `SCHEDULE_EXACT_ALARM` is requested for notice reminders; `USE_EXACT_ALARM`
+  is deliberately not, since Play restricts it to alarm-clock and calendar
+  apps. The notification listener service is `exported="false"` and bound
+  only by the system.
 - The share-sheet entries are `image/*` and `application/pdf`, single and
   multiple, deliberately not `*/*`: the app should not offer itself for a text
   or video share.
 
 ## Not yet wired
 
-- Notification capture and classification (prompt `03`); the
-  `classification` model slot in AI settings is reserved for it.
+- The Play Console *Notification listener* declaration and the privacy
+  policy entry for notification capture (prompt `03` §H) — both are policy
+  paperwork outside this repo.
+- Notice capture on iOS. There is no `NotificationListenerService`
+  equivalent; the feature hides itself rather than pretending.
 - The generated-paper PDF embeds Figtree only, so Hindi and Gujarati papers
   render fully on screen but print those glyphs as boxes — bundling Noto
   Devanagari/Gujarati is the follow-up. LaTeX in `$…$` is shown verbatim,

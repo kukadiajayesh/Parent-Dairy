@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 /// users/{uid}/children/{childId}/records/{recordId}
 /// users/{uid}/children/{childId}/results/{resultId}
 /// users/{uid}/children/{childId}/generated/{generatedId}
+/// users/{uid}/notices/{noticeId}
 /// ```
 ///
 /// Two deliberate choices against the spec's sketch:
@@ -78,6 +79,13 @@ abstract final class Paths {
     String uid,
     String childId,
   ) => child(uid, childId).collection('generated');
+
+  /// Captured school notifications (prompt 03). Parent-level, not under a
+  /// child: a notification arrives before anyone knows which child it is
+  /// about, and the parent assigns one on confirm. The document id is the
+  /// capture's dedupe hash, so the same notice from two phones is one doc.
+  static CollectionReference<Map<String, dynamic>> notices(String uid) =>
+      user(uid).collection('notices');
 
   /// Storage layout from §33. Files are namespaced by record so deleting a
   /// record can drop its whole folder, and never land in a shared bucket root.

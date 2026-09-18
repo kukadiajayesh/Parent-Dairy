@@ -7,6 +7,8 @@
 /// exactly as it does for the other models.
 library;
 
+import 'models.dart';
+
 // ── JSON helpers ──────────────────────────────────────────────────────────
 
 /// Lenient readers shared by every `fromJson` below. Public only so the
@@ -1256,4 +1258,82 @@ class GeneratedDoc {
     isDeleted: isDeleted ?? this.isDeleted,
     deletedAt: deletedAt ?? this.deletedAt,
   );
+}
+
+// ── prompt 03 §C stage 2 ──────────────────────────────────────────────────
+
+/// What the classification model said about one notice. Dates are kept as
+/// the model wrote them; `NoticeReminders.acceptableDate` decides whether
+/// they are trusted.
+class NoticeModelReading {
+  const NoticeModelReading({
+    required this.kind,
+    required this.title,
+    this.subject,
+    this.eventDate,
+    this.eventTime,
+    this.endDate,
+    this.dueDate,
+    this.confidence = 0,
+    this.reasoning = '',
+    this.model = '',
+  });
+
+  final NoticeKind kind;
+  final String title;
+  final String? subject;
+  final DateTime? eventDate;
+
+  /// `(hour, minute)` when the model read a time.
+  final (int, int)? eventTime;
+  final DateTime? endDate;
+  final DateTime? dueDate;
+  final double confidence;
+  final String reasoning;
+  final String model;
+
+  factory NoticeModelReading.fromJson(Map<String, Object?> m) => NoticeModelReading(
+    kind: NoticeKind.fromWire(J.strOrNull(m['kind'])),
+    title: J.str(m['title']),
+    subject: J.strOrNull(m['subject']),
+    eventDate: _isoDate(m['eventDate']),
+    eventTime: _time(m['eventTime']),
+    endDate: _isoDate(m['endDate']),
+    dueDate: _isoDate(m['dueDate']),
+    confidence: J.confidence(m['confidence'], 0),
+    reasoning: J.str(m['reasoning']),
+  );
+
+  NoticeModelReading copyWith({String? model}) => NoticeModelReading(
+    kind: kind,
+    title: title,
+    subject: subject,
+    eventDate: eventDate,
+    eventTime: eventTime,
+    endDate: endDate,
+    dueDate: dueDate,
+    confidence: confidence,
+    reasoning: reasoning,
+    model: model ?? this.model,
+  );
+
+  static DateTime? _isoDate(Object? v) {
+    final s = J.strOrNull(v);
+    if (s == null) return null;
+    final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(s.trim());
+    if (m == null) return null;
+    final d = DateTime(int.parse(m.group(1)!), int.parse(m.group(2)!), int.parse(m.group(3)!));
+    return d.month == int.parse(m.group(2)!) ? d : null;
+  }
+
+  static (int, int)? _time(Object? v) {
+    final s = J.strOrNull(v);
+    if (s == null) return null;
+    final m = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(s.trim());
+    if (m == null) return null;
+    final h = int.parse(m.group(1)!);
+    final min = int.parse(m.group(2)!);
+    if (h > 23 || min > 59) return null;
+    return (h, min);
+  }
 }

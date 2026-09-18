@@ -10,12 +10,17 @@ import '../core/services/ai/ai_service.dart';
 import '../core/services/ai/gemini_client.dart';
 import '../core/services/ai/gemini_key_store.dart';
 import '../core/services/connectivity_service.dart';
+import '../core/services/ai/ai_redaction.dart';
+import '../core/services/ai/subject_matcher.dart';
 import '../core/services/image_service.dart';
+import '../core/services/notice_capture_service.dart';
 import '../core/services/notification_service.dart';
 import '../core/services/prefs_service.dart';
 import '../core/services/telemetry_service.dart';
 import '../core/config/grade_scale.dart';
 import '../core/theme/subject_hue.dart';
+import 'analytics/notice_extractor.dart';
+import 'analytics/notice_reminders.dart';
 import 'analytics/subject_insights.dart';
 import 'models.dart';
 import 'models_ai.dart';
@@ -23,6 +28,7 @@ import 'repositories/attachment_repository.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/child_repository.dart';
 import 'repositories/generated_repository.dart';
+import 'repositories/notice_repository.dart';
 import 'repositories/record_repository.dart';
 import 'repositories/result_repository.dart';
 import 'repositories/subject_repository.dart';
@@ -76,10 +82,14 @@ class AppState extends ChangeNotifier {
     RecordRepository records = const RecordRepository(),
     ResultRepository results = const ResultRepository(),
     GeneratedRepository generated = const GeneratedRepository(),
+    NoticeRepository notices = const NoticeRepository(),
     AttachmentRepository? attachments,
     ConnectivityService? connectivity,
     GeminiKeyStore? aiKeys,
     AiService? ai,
+    NoticeCaptureService? noticeCapture,
+    NoticeReminderScheduler? noticeScheduler,
+    DateTime Function()? now,
   }) : _auth = auth ?? AuthRepository(),
        _childRepo = children,
        _subjectRepo = subjects,
@@ -87,10 +97,14 @@ class AppState extends ChangeNotifier {
        _recordRepo = records,
        _resultRepo = results,
        _generatedRepo = generated,
+       _noticeRepo = notices,
        _attachmentRepo = attachments ?? AttachmentRepository(),
        _connectivity = connectivity ?? ConnectivityService(),
        _aiKeysOverride = aiKeys,
-       _aiOverride = ai {
+       _aiOverride = ai,
+       _noticeCaptureOverride = noticeCapture,
+       _noticeSchedulerOverride = noticeScheduler,
+       _now = now ?? DateTime.now {
     uploads = UploadQueue(
       attachments: _attachmentRepo,
       records: _recordRepo,
@@ -107,10 +121,14 @@ class AppState extends ChangeNotifier {
   final RecordRepository _recordRepo;
   final ResultRepository _resultRepo;
   final GeneratedRepository _generatedRepo;
+  final NoticeRepository _noticeRepo;
   final AttachmentRepository _attachmentRepo;
   final ConnectivityService _connectivity;
   final GeminiKeyStore? _aiKeysOverride;
   final AiService? _aiOverride;
+  final NoticeCaptureService? _noticeCaptureOverride;
+  final NoticeReminderScheduler? _noticeSchedulerOverride;
+  final DateTime Function() _now;
 
   late final UploadQueue uploads;
 
@@ -121,6 +139,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<DiaryRecord>>? _recordsSub;
   StreamSubscription<List<ExamResult>>? _resultsSub;
   StreamSubscription<List<GeneratedDoc>>? _generatedSub;
+  StreamSubscription<List<CapturedNotice>>? _noticesSub;
 
   // ── AI (prompt 02) ───────────────────────────────────────────────────────
   //
@@ -237,11 +256,14 @@ class AppState extends ChangeNotifier {
     _records = const [];
     _results = const [];
     _generated = const [];
+    _notices = const [];
     _allYearResults = null;
     _years = const [];
     _childId = null;
     _loadingRecords = false;
     _loadingResults = false;
+    _loadingNotices = false;
+    _noticesPurged = false;
 
     if (user == null) {
       _status = AuthStatus.signedOut;
@@ -257,6 +279,10 @@ class AppState extends ChangeNotifier {
     _yearsSub = _yearRepo
         .watch(user.uid)
         .listen(_onYears, onError: _onStreamError);
+    // Notices hang off the parent, not the child, so they subscribe here.
+    // Only when capture is on: with it off there is nothing to read and a
+    // stream would still cost a listener.
+    if (noticeCaptureEnabled) _subscribeNotices(user.uid);
     notifyListeners();
   }
 
@@ -402,12 +428,14 @@ class AppState extends ChangeNotifier {
     _recordsSub?.cancel();
     _resultsSub?.cancel();
     _generatedSub?.cancel();
+    _noticesSub?.cancel();
     _childrenSub = null;
     _yearsSub = null;
     _subjectsSub = null;
     _recordsSub = null;
     _resultsSub = null;
     _generatedSub = null;
+    _noticesSub = null;
   }
 
   bool _loadingRecords = false;
@@ -1206,6 +1234,607 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
+
+  // ── Notification capture (prompt 03) ─────────────────────────────────────
+  //
+  // Android-only. The native listener buffers captures while Flutter is not
+  // running; [drainNotices] pulls them in on start and on every resume,
+  // runs the extractor, applies the auto-arm policy and writes to
+  // `users/{uid}/notices`. Everything here degrades to a no-op on iOS.
+
+  late final NoticeCaptureService noticeCapture =
+      _noticeCaptureOverride ?? NoticeCaptureService();
+
+  late final NoticeReminderScheduler _noticeScheduler =
+      _noticeSchedulerOverride ?? NotificationService.instance;
+
+  List<CapturedNotice> _notices = const [];
+  bool _loadingNotices = false;
+  bool _noticesPurged = false;
+  bool _draining = false;
+
+  /// Every non-deleted notice, newest posted first.
+  List<CapturedNotice> get notices => List.unmodifiable(_notices);
+  bool get isLoadingNotices => _loadingNotices;
+
+  bool get noticeCaptureSupported => noticeCapture.isSupported;
+
+  /// The master switch (Settings → Notification capture).
+  bool get noticeCaptureEnabled =>
+      noticeCaptureSupported && PrefsService.instance.noticesEnabled;
+
+  /// Switched on *and* granted in system settings.
+  bool get noticeCaptureActive => noticeCaptureEnabled && noticeCapture.isGranted;
+
+  /// Needs a tap: kind or date read, but not confidently enough to arm.
+  List<CapturedNotice> get noticeInbox => _notices.where((n) => n.inInbox).toList();
+  int get noticeInboxCount => noticeInbox.length;
+
+  /// Confirmed, with an event today or later, soonest first.
+  List<CapturedNotice> get upcomingNotices {
+    final now = _now();
+    return _notices.where((n) => n.isUpcoming(now)).toList()
+      ..sort((a, b) => a.date!.compareTo(b.date!));
+  }
+
+  /// The home strip: confirmed notices in the next fourteen days.
+  List<CapturedNotice> get upcomingFromSchool {
+    final limit = _now().add(const Duration(days: 14));
+    return upcomingNotices.where((n) => !n.date!.isAfter(limit)).toList();
+  }
+
+  CapturedNotice? noticeById(String id) =>
+      _notices.where((n) => n.id == id).firstOrNull;
+
+  void _subscribeNotices(String uid) {
+    _noticesSub?.cancel();
+    _loadingNotices = true;
+    _noticesSub = _noticeRepo.watch(uid).listen((value) {
+      _notices = value;
+      _loadingNotices = false;
+      notifyListeners();
+    }, onError: (Object error, StackTrace stack) {
+      _loadingNotices = false;
+      _onStreamError(error, stack);
+    });
+  }
+
+  /// Retries the notices stream after an error.
+  void retryNotices() {
+    final uid = _auth.uid;
+    if (uid == null) return;
+    clearError();
+    _subscribeNotices(uid);
+    notifyListeners();
+  }
+
+  Future<void> setNoticeCaptureEnabled(bool value) async {
+    final uid = _auth.uid;
+    await PrefsService.instance.setNoticesEnabled(value);
+    if (value) {
+      await _syncWatchedPackages();
+      if (uid != null) _subscribeNotices(uid);
+      await refreshNoticeCapture();
+    } else {
+      // The listener stays bound (that is the OS's permission, not ours)
+      // but with an empty opt-in set it captures nothing.
+      await noticeCapture.setWatchedPackages(const []);
+      _noticesSub?.cancel();
+      _noticesSub = null;
+      _notices = const [];
+      _loadingNotices = false;
+    }
+    notifyListeners();
+  }
+
+  bool get noticeDisclosureAccepted =>
+      PrefsService.instance.noticeDisclosureAt != null;
+
+  Future<void> acceptNoticeDisclosure() async {
+    await PrefsService.instance.setNoticeDisclosureAccepted();
+    notifyListeners();
+  }
+
+  // ── watched apps and rules ──
+
+  List<String> get watchedPackages => PrefsService.instance.noticePackages;
+
+  NoticeAppRule noticeRuleFor(String packageName) =>
+      PrefsService.instance.noticeRules[packageName] ?? NoticeAppRule.all;
+
+  Future<void> setWatchedPackages(List<String> packages) async {
+    await PrefsService.instance.setNoticePackages(packages);
+    await _syncWatchedPackages();
+    notifyListeners();
+  }
+
+  Future<void> setNoticeRule(String packageName, NoticeAppRule rule) async {
+    await PrefsService.instance.setNoticeRule(packageName, rule);
+    await _syncWatchedPackages();
+    notifyListeners();
+  }
+
+  /// Writes the opt-in set the native listener reads: every ticked app
+  /// whose rule is not "off".
+  Future<void> _syncWatchedPackages() async {
+    if (!noticeCaptureEnabled) return;
+    final rules = PrefsService.instance.noticeRules;
+    await noticeCapture.setWatchedPackages([
+      for (final p in watchedPackages)
+        if ((rules[p] ?? NoticeAppRule.all) != NoticeAppRule.off) p,
+    ]);
+  }
+
+  /// Packages that have actually posted a captured notice, most recent
+  /// first — the picker floats these to the top.
+  List<String> get packagesWithCaptures {
+    final seen = <String>{};
+    return [for (final n in _notices) if (seen.add(n.packageName)) n.packageName];
+  }
+
+  // ── app → child ──
+
+  /// The child an app's notices default to: the remembered mapping, else
+  /// the only child, else nothing (the parent is asked on confirm).
+  String? childIdForPackage(String packageName) {
+    final mapped = PrefsService.instance.noticeChildMap[packageName];
+    if (mapped != null && _children.any((c) => c.id == mapped)) return mapped;
+    if (_children.length == 1) return _children.first.id;
+    return null;
+  }
+
+  Future<void> rememberNoticeChild(String packageName, String childId) =>
+      PrefsService.instance.setNoticeChild(packageName, childId);
+
+  // ── reminder offsets ──
+
+  Map<NoticeKind, List<int>> get noticeOffsets => {
+    ...NoticeReminders.defaultOffsets,
+    ...?PrefsService.instance.noticeOffsets,
+  };
+
+  Future<void> setNoticeOffsets(NoticeKind kind, List<int> days) async {
+    await PrefsService.instance.setNoticeOffsets(kind, days);
+    notifyListeners();
+  }
+
+  int get noticeRetentionDays => PrefsService.instance.noticeRetentionDays;
+
+  Future<void> setNoticeRetentionDays(int days) async {
+    await PrefsService.instance.setNoticeRetentionDays(days);
+    notifyListeners();
+    unawaited(purgeOldNotices(force: true));
+  }
+
+  /// §F: granted, apps ticked, and nothing captured in fourteen days — the
+  /// OEM's battery manager has probably killed the listener.
+  bool get noticeBatteryHintDue {
+    if (!noticeCaptureActive || watchedPackages.isEmpty) return false;
+    if (PrefsService.instance.noticeBatteryHintShown) return false;
+    final since = noticeCapture.lastCaptureAt ?? PrefsService.instance.noticesEnabledAt;
+    if (since == null) return false;
+    return _now().difference(since) > const Duration(days: 14);
+  }
+
+  Future<void> dismissNoticeBatteryHint() async {
+    await PrefsService.instance.setNoticeBatteryHintShown();
+    notifyListeners();
+  }
+
+  // ── drain ──
+
+  /// Re-checks the permission and drains the buffer. Called on start and
+  /// on every resume.
+  Future<void> refreshNoticeCapture() async {
+    if (!noticeCaptureEnabled) return;
+    await noticeCapture.refresh();
+    await drainNotices();
+    notifyListeners();
+  }
+
+  /// Pulls buffered captures in, extracts, applies the auto-arm policy and
+  /// writes. Idempotent: every hash is checked against stored notices
+  /// first, so a re-post after the buffer was cleared is not a second
+  /// document. Returns how many new notices were stored.
+  Future<int> drainNotices() async {
+    final uid = _auth.uid;
+    if (uid == null || !noticeCaptureEnabled || _draining) return 0;
+    _draining = true;
+    try {
+      final raw = await noticeCapture.drain();
+      if (raw.isEmpty) return 0;
+
+      // The stream may not have delivered yet on a cold start; ask the
+      // repository too rather than trusting an empty list.
+      final known = <String>{for (final n in _notices) n.sourceHash};
+      if (_notices.isEmpty) known.addAll(await _noticeRepo.knownHashes(uid));
+
+      final now = _now();
+      final rules = PrefsService.instance.noticeRules;
+      var added = 0;
+      final lowConfidence = <CapturedNotice>[];
+      for (final r in raw) {
+        if (known.contains(r.hash)) continue;
+        final rule = rules[r.packageName] ?? NoticeAppRule.all;
+        if (rule == NoticeAppRule.off) continue;
+        if (rule == NoticeAppRule.keywords &&
+            !NoticeExtractor.looksLikeNotice('${r.title}\n${r.body}')) {
+          continue;
+        }
+        final childId = childIdForPackage(r.packageName);
+        final extraction = NoticeExtractor.extract(
+          title: r.title,
+          body: r.body,
+          postedAt: r.postedAt,
+          subjects: _subjectsFor(childId),
+        );
+        final notice = CapturedNotice(
+          id: '',
+          packageName: r.packageName,
+          appLabel: r.appLabel,
+          title: r.title,
+          body: r.body,
+          postedAt: r.postedAt,
+          sourceHash: r.hash,
+          childId: childId,
+          extraction: extraction,
+          truncated: r.truncated,
+        );
+        try {
+          final saved = await _saveWithPolicy(uid, notice, now);
+          known.add(r.hash);
+          added++;
+          if (extraction.confidence < 0.7) lowConfidence.add(saved);
+        } catch (error, stack) {
+          unawaited(Telemetry.recordError(error, stack, context: 'noticeDrain'));
+        }
+      }
+      unawaited(PrefsService.instance.setNoticeLastDrainAt(now));
+      if (lowConfidence.isNotEmpty) unawaited(_classifyNotices(lowConfidence));
+      return added;
+    } catch (error, stack) {
+      _lastError = AppFailure.from(error);
+      unawaited(Telemetry.recordError(error, stack, context: 'noticeDrain'));
+      return 0;
+    } finally {
+      _draining = false;
+      notifyListeners();
+    }
+  }
+
+  /// Subject names for matching: the active child's when the notice is
+  /// theirs or unassigned. Another child's subjects are not loaded, so a
+  /// notice for them matches on the built-in list only.
+  List<String> _subjectsFor(String? childId) =>
+      childId == null || childId == _childId ? subjectNames : const [];
+
+  /// §D. Auto-arms when the policy allows and the scheduler actually
+  /// scheduled something; otherwise the notice lands as needs-review.
+  Future<CapturedNotice> _saveWithPolicy(
+    String uid,
+    CapturedNotice notice,
+    DateTime now,
+  ) async {
+    final extraction = notice.extraction!;
+    final decision = NoticeReminders.decide(
+      extraction,
+      now: now,
+      autoArmedThisWeek: PrefsService.instance.noticeAutoArmed(now).length,
+    );
+    var toSave = notice.id.isEmpty ? notice.copyWith(id: notice.sourceHash) : notice;
+    if (decision == NoticeArmDecision.auto) {
+      final times = NoticeReminders.timesFor(extraction, now: now, offsets: noticeOffsets);
+      final ids = await _noticeScheduler.scheduleNoticeReminders(toSave, times);
+      if (ids.isNotEmpty) {
+        toSave = toSave.copyWith(
+          status: NoticeStatus.confirmed,
+          reminderIds: ids,
+          autoArmedAt: now,
+        );
+        await PrefsService.instance.recordNoticeAutoArmed(now);
+        unawaited(_noticeScheduler.showNoticeArmed(toSave));
+      }
+    }
+    return _noticeRepo.save(uid: uid, notice: toSave);
+  }
+
+  /// Stage 2 (§C): the cheap classification model, only for notices the
+  /// rules read below 0.7, only with AI on and a key, at most fifty calls a
+  /// day, ten notices per call. Any failure is silent — falling back to the
+  /// inbox is normal, not an error.
+  Future<void> _classifyNotices(List<CapturedNotice> pending) async {
+    final uid = _auth.uid;
+    if (uid == null || !aiReady || isOffline) return;
+    final child = activeChild;
+    if (child.id.isEmpty) return;
+    final now = _now();
+    var budget = 50 - PrefsService.instance.noticeAiCallsToday(now);
+    for (var i = 0; i < pending.length && budget > 0; i += 10, budget--) {
+      final batch = pending.skip(i).take(10).toList();
+      await PrefsService.instance.recordNoticeAiCall(now);
+      final Map<String, NoticeModelReading> readings;
+      try {
+        readings = await ai.classifyNotices(
+          notices: [
+            for (final n in batch)
+              (
+                id: n.id,
+                title: _scrubForFamily(n.title),
+                body: _scrubForFamily(n.body),
+                postedAt: n.postedAt,
+              ),
+          ],
+          child: child,
+          subjects: subjectNames,
+        );
+      } catch (_) {
+        return;
+      }
+      for (final n in batch) {
+        final reading = readings[n.id];
+        final current = noticeById(n.id) ?? n;
+        // The parent may have acted in the meantime; never overwrite that.
+        if (reading == null || !current.needsReview) continue;
+        final merged = _mergeReading(current, reading);
+        if (merged == null) continue;
+        try {
+          await _saveWithPolicy(uid, current.copyWith(extraction: merged), now);
+        } catch (error, stack) {
+          unawaited(Telemetry.recordError(error, stack, context: 'noticeClassify'));
+        }
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Every child's identifiers, not just the active one's — a sibling's
+  /// name in a notice is just as private.
+  String _scrubForFamily(String text) {
+    var out = text;
+    for (final c in _children) {
+      out = AiRedaction.scrub(out, c);
+    }
+    return out;
+  }
+
+  /// Applies the same validation as stage 1 to a model reading: a date in
+  /// the past or more than a year out is discarded, not trusted, and a
+  /// reading no surer than the rules is ignored.
+  NoticeExtraction? _mergeReading(CapturedNotice notice, NoticeModelReading r) {
+    final old = notice.extraction;
+    if (old != null && r.confidence <= old.confidence) return null;
+    if (r.kind == NoticeKind.unknown && r.eventDate == null && r.dueDate == null) return null;
+
+    DateTime? stamp(DateTime? d) {
+      if (!NoticeReminders.acceptableDate(d, postedAt: notice.postedAt)) return null;
+      final t = r.eventTime;
+      return t == null ? d : DateTime(d!.year, d.month, d.day, t.$1, t.$2);
+    }
+
+    final eventAt = stamp(r.eventDate);
+    final dueAt = stamp(r.dueDate);
+    final endAt = NoticeReminders.acceptableDate(r.endDate, postedAt: notice.postedAt) ? r.endDate : null;
+    final anyDate = eventAt != null || dueAt != null;
+    // A date the validator threw out takes the confidence down with it.
+    final confidence = ((r.eventDate != null || r.dueDate != null) && !anyDate)
+        ? r.confidence.clamp(0, 0.5).toDouble()
+        : r.confidence;
+    return NoticeExtraction(
+      kind: r.kind,
+      title: r.title.trim().isEmpty ? (old?.title ?? notice.displayTitle) : r.title.trim(),
+      subject: r.subject == null ? old?.subject : SubjectMatcher.match(r.subject!, _subjectsFor(notice.childId)),
+      eventAt: eventAt,
+      endAt: endAt,
+      allDay: r.eventTime == null,
+      dueAt: dueAt,
+      confidence: confidence,
+      source: 'gemini',
+      matchedPhrases: [if (r.reasoning.isNotEmpty) r.reasoning],
+    );
+  }
+
+  // ── actions ──
+
+  /// The parent's confirm (§E). The extraction handed in is the truth from
+  /// here on; reminders are (re)armed from it.
+  Future<void> confirmNotice(
+    String id, {
+    NoticeExtraction? extraction,
+    String? childId,
+    List<DateTime>? reminderTimes,
+  }) async {
+    final uid = _auth.uid;
+    final notice = noticeById(id);
+    if (uid == null || notice == null) return;
+    final e = extraction ?? notice.extraction;
+    if (e == null) return;
+    final now = _now();
+    await _noticeScheduler.cancelNoticeReminders(notice.reminderIds);
+    var updated = notice.copyWith(
+      extraction: e,
+      childId: childId ?? notice.childId,
+      status: NoticeStatus.confirmed,
+      reminderIds: const [],
+      clearAutoArmedAt: true,
+    );
+    final times = reminderTimes ?? NoticeReminders.timesFor(e, now: now, offsets: noticeOffsets);
+    final ids = await _noticeScheduler.scheduleNoticeReminders(updated, times);
+    updated = updated.copyWith(reminderIds: ids);
+    await _noticeRepo.save(uid: uid, notice: updated);
+    if (childId != null) unawaited(rememberNoticeChild(notice.packageName, childId));
+    unawaited(Telemetry.noticeConfirmed(e.kind.wire, e.source));
+    notifyListeners();
+  }
+
+  /// Saves an edit without confirming — kind, date, subject or child.
+  Future<void> updateNotice(String id, {NoticeExtraction? extraction, String? childId}) async {
+    final uid = _auth.uid;
+    final notice = noticeById(id);
+    if (uid == null || notice == null) return;
+    await _noticeRepo.save(
+      uid: uid,
+      notice: notice.copyWith(extraction: extraction, childId: childId),
+    );
+  }
+
+  Future<void> ignoreNotice(String id) async {
+    final uid = _auth.uid;
+    final notice = noticeById(id);
+    if (uid == null || notice == null) return;
+    await _noticeScheduler.cancelNoticeReminders(notice.reminderIds);
+    await _noticeRepo.save(
+      uid: uid,
+      notice: notice.copyWith(
+        status: NoticeStatus.ignored,
+        reminderIds: const [],
+        clearAutoArmedAt: true,
+      ),
+    );
+    unawaited(Telemetry.noticeIgnored(notice.kind.wire));
+  }
+
+  /// An ignored notice back to needs-review — the "Undo" on a swipe.
+  Future<void> restoreNotice(String id) async {
+    final uid = _auth.uid;
+    final notice = noticeById(id);
+    if (uid == null || notice == null) return;
+    await _noticeRepo.save(
+      uid: uid,
+      notice: notice.copyWith(status: NoticeStatus.needsReview),
+    );
+  }
+
+  /// Undo for an auto-armed notice (§D): back to the inbox, alarms off.
+  Future<void> undoNoticeAutoArm(String id) async {
+    final uid = _auth.uid;
+    final notice = noticeById(id);
+    if (uid == null || notice == null) return;
+    await _noticeScheduler.cancelNoticeReminders(notice.reminderIds);
+    await _noticeRepo.save(
+      uid: uid,
+      notice: notice.copyWith(
+        status: NoticeStatus.needsReview,
+        reminderIds: const [],
+        clearAutoArmedAt: true,
+      ),
+    );
+  }
+
+  Future<void> deleteNotice(String id) async {
+    final uid = _auth.uid;
+    final notice = noticeById(id);
+    if (uid == null || notice == null) return;
+    await _noticeScheduler.cancelNoticeReminders(notice.reminderIds);
+    await _noticeRepo.softDelete(uid: uid, noticeId: id);
+  }
+
+  /// Settings → Delete all captured notices. Really deletes — this is other
+  /// people's text — and clears every alarm armed from it.
+  Future<void> deleteAllNotices() async {
+    final uid = _auth.uid;
+    if (uid == null) return;
+    for (final n in _notices) {
+      await _noticeScheduler.cancelNoticeReminders(n.reminderIds);
+    }
+    await _noticeRepo.deleteAll(uid);
+    _notices = const [];
+    notifyListeners();
+  }
+
+  /// Retention (§B): once per session after sign-in, drop notices older
+  /// than the retention window.
+  Future<void> purgeOldNotices({bool force = false}) async {
+    final uid = _auth.uid;
+    if (uid == null || !noticeCaptureEnabled) return;
+    if (_noticesPurged && !force) return;
+    _noticesPurged = true;
+    try {
+      await _noticeRepo.purgeOlderThan(
+        uid: uid,
+        before: _now().subtract(Duration(days: noticeRetentionDays)),
+      );
+    } catch (error, stack) {
+      unawaited(Telemetry.recordError(error, stack, context: 'noticePurge'));
+    }
+  }
+
+  /// Convert to record (§D). An assignment becomes a worksheet with the due
+  /// date filled and the notice text as notes, saved straight away. An exam
+  /// needs its timetable image, so the caller gets a *draft* to open in the
+  /// Add Exam form and links it with [linkNoticeToRecord] afterwards.
+  DiaryRecord draftRecordFor(CapturedNotice notice) {
+    final e = notice.extraction;
+    final subject = e?.subject ?? suggestedSubject;
+    final title = notice.displayTitle;
+    final notes = 'From ${notice.appLabel}:\n${notice.body.trim()}';
+    final date = DateTime(notice.postedAt.year, notice.postedAt.month, notice.postedAt.day);
+    if (e?.kind == NoticeKind.exam) {
+      final examDate = e?.date ?? date;
+      return DiaryRecord(
+        id: '',
+        type: RecordType.exam,
+        subject: subject.isEmpty ? 'General' : subject,
+        title: title,
+        examType: title,
+        date: DateTime(examDate.year, examDate.month, examDate.day),
+        notes: notes,
+        origin: RecordOrigin.notification,
+      );
+    }
+    return DiaryRecord(
+      id: '',
+      type: RecordType.worksheet,
+      subject: subject.isEmpty ? 'General' : subject,
+      title: title,
+      date: date,
+      dueDate: e?.date == null ? null : DateTime(e!.date!.year, e.date!.month, e.date!.day),
+      notes: notes,
+      origin: RecordOrigin.notification,
+    );
+  }
+
+  /// One tap for an assignment notice: saves the worksheet and links it.
+  Future<DiaryRecord> convertNoticeToWorksheet(String id) async {
+    final notice = noticeById(id);
+    if (notice == null) throw AppFailure.cancelled;
+    final draft = draftRecordFor(notice);
+    final record = await saveRecord(
+      draft.copyWith(
+        type: RecordType.worksheet,
+        // A due date before the notice date fails validation; a notice
+        // about last week's homework is still worth filing.
+        dueDate: draft.dueDate != null && draft.dueDate!.isBefore(draft.date) ? null : draft.dueDate,
+      ),
+    );
+    await linkNoticeToRecord(id, record, cancelReminders: true);
+    return record;
+  }
+
+  Future<void> linkNoticeToRecord(
+    String id,
+    DiaryRecord record, {
+    bool cancelReminders = false,
+  }) async {
+    final uid = _auth.uid;
+    final notice = noticeById(id);
+    if (uid == null || notice == null) return;
+    if (cancelReminders) {
+      // The worksheet carries its own due-date reminder; two alarms on the
+      // same morning would be a nag.
+      await _noticeScheduler.cancelNoticeReminders(notice.reminderIds);
+    }
+    await _noticeRepo.save(
+      uid: uid,
+      notice: notice.copyWith(
+        status: NoticeStatus.converted,
+        linkedRecordId: record.id,
+        reminderIds: cancelReminders ? const [] : notice.reminderIds,
+        clearAutoArmedAt: true,
+      ),
+    );
+    unawaited(Telemetry.noticeConverted(record.type.wire));
+  }
+
   // ── Weak-subject analytics ───────────────────────────────────────────────
 
   /// Every year's results, fetched once per child when the parent asks for
@@ -1403,6 +2032,7 @@ class AppState extends ChangeNotifier {
     _authSub?.cancel();
     _cancelDataSubscriptions();
     aiKeys.removeListener(notifyListeners);
+    if (_noticeCaptureOverride == null) noticeCapture.dispose();
     _connectivity.offline.removeListener(_onConnectivityChanged);
     uploads.removeListener(notifyListeners);
     uploads.dispose();

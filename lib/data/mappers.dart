@@ -410,6 +410,108 @@ abstract final class Map$ {
     );
   }
 
+  // ── CapturedNotice (prompt 03) ──────────────────────────────────────────
+
+  /// Body capped at 4000 chars on the way out as well, so an old capture
+  /// with a longer body can never fail the rules.
+  static const int noticeBodyMax = 4000;
+
+  static Map<String, dynamic> noticeToMap(CapturedNotice n) => {
+    'packageName': n.packageName,
+    'appLabel': n.appLabel,
+    'title': n.title.length > 300 ? n.title.substring(0, 300) : n.title,
+    'body': n.body.length > noticeBodyMax
+        ? n.body.substring(0, noticeBodyMax)
+        : n.body,
+    'truncated': n.truncated || n.body.length > noticeBodyMax,
+    'postedAt': Timestamp.fromDate(n.postedAt),
+    'sourceHash': n.sourceHash,
+    'childId': n.childId,
+    'status': n.status.wire,
+    'extraction': n.extraction == null ? null : extractionToMap(n.extraction!),
+    'linkedRecordId': n.linkedRecordId,
+    'reminderIds': n.reminderIds,
+    'autoArmedAt': n.autoArmedAt == null
+        ? null
+        : Timestamp.fromDate(n.autoArmedAt!),
+    'isDeleted': n.isDeleted,
+    'deletedAt': n.deletedAt == null ? null : Timestamp.fromDate(n.deletedAt!),
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
+
+  static Map<String, dynamic> extractionToMap(NoticeExtraction e) => {
+    'kind': e.kind.wire,
+    'title': e.title,
+    'subject': e.subject,
+    'eventAt': e.eventAt == null ? null : Timestamp.fromDate(e.eventAt!),
+    'endAt': e.endAt == null ? null : Timestamp.fromDate(e.endAt!),
+    'allDay': e.allDay,
+    'dueAt': e.dueAt == null ? null : Timestamp.fromDate(e.dueAt!),
+    'confidence': e.confidence,
+    'source': e.source,
+    'matchedPhrases': e.matchedPhrases.take(40).toList(),
+    'alternateDates': [
+      for (final d in e.alternateDates.take(10)) Timestamp.fromDate(d),
+    ],
+  };
+
+  static NoticeExtraction? extractionFrom(Object? value) {
+    if (value is! Map) return null;
+    final m = Map<String, dynamic>.from(value);
+    final confidence = number(m['confidence']);
+    final alternates = m['alternateDates'];
+    return NoticeExtraction(
+      kind: NoticeKind.fromWire(m['kind'] as String?),
+      title: str(m['title']),
+      subject: m['subject'] is String && (m['subject'] as String).isNotEmpty
+          ? m['subject'] as String
+          : null,
+      eventAt: date(m['eventAt']),
+      endAt: date(m['endAt']),
+      allDay: flag(m['allDay'], true),
+      dueAt: date(m['dueAt']),
+      confidence: confidence == null ? 0 : confidence.clamp(0, 1).toDouble(),
+      source: str(m['source'], 'rules'),
+      matchedPhrases: chaptersFrom(m['matchedPhrases']),
+      alternateDates: [
+        if (alternates is List)
+          for (final a in alternates)
+            if (date(a) != null) date(a)!,
+      ],
+    );
+  }
+
+  static CapturedNotice noticeFrom(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final m = doc.data() ?? const {};
+    final ids = m['reminderIds'];
+    return CapturedNotice(
+      id: doc.id,
+      packageName: str(m['packageName']),
+      appLabel: str(m['appLabel'], str(m['packageName'])),
+      title: str(m['title']),
+      body: str(m['body']),
+      postedAt: date(m['postedAt']) ?? DateTime.now(),
+      sourceHash: str(m['sourceHash'], doc.id),
+      childId: m['childId'] is String && (m['childId'] as String).isNotEmpty
+          ? m['childId'] as String
+          : null,
+      status: NoticeStatus.fromWire(m['status'] as String?),
+      extraction: extractionFrom(m['extraction']),
+      linkedRecordId: m['linkedRecordId'] as String?,
+      reminderIds: [
+        if (ids is List)
+          for (final v in ids)
+            if (v is num) v.toInt(),
+      ],
+      truncated: flag(m['truncated']),
+      autoArmedAt: date(m['autoArmedAt']),
+      createdAt: date(m['createdAt']),
+      updatedAt: date(m['updatedAt']),
+      isDeleted: flag(m['isDeleted']),
+      deletedAt: date(m['deletedAt']),
+    );
+  }
+
   static List<String> generatedSearchTerms(GeneratedDoc g) {
     final words = <String>{};
     for (final source in [g.title, g.subject]) {

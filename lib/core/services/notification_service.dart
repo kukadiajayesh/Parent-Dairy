@@ -7,6 +7,7 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../data/analytics/notice_reminders.dart';
 import '../../data/models.dart';
 import 'prefs_service.dart';
 
@@ -19,13 +20,27 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // point registered when server-sent reminders are switched on.
 }
 
-/// Worksheet and homework reminders (§24).
+/// What the notice pipeline needs from the notification layer — a seam so
+/// the auto-arm policy can be tested without a platform plugin.
+abstract class NoticeReminderScheduler {
+  /// Schedules one local notification per moment in [times] and returns the
+  /// ids it used. Moments already past are skipped.
+  Future<List<int>> scheduleNoticeReminders(CapturedNotice notice, List<DateTime> times);
+
+  Future<void> cancelNoticeReminders(List<int> ids);
+
+  /// "Reminder added from {app} — tap to review" (§D).
+  Future<void> showNoticeArmed(CapturedNotice notice);
+}
+
+/// Worksheet and homework reminders (§24), and school-notice reminders
+/// (prompt 03 §D) on their own channel.
 ///
 /// Due-date reminders are **local** notifications: the due date is already on
 /// the device, so scheduling them locally means they fire with no server, no
 /// backend job and no network. FCM is initialised alongside so that
 /// server-driven pushes can be added later without touching call sites.
-class NotificationService {
+class NotificationService implements NoticeReminderScheduler {
   NotificationService({FlutterLocalNotificationsPlugin? plugin})
     : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
@@ -40,7 +55,27 @@ class NotificationService {
   static const _channelDescription =
       'Reminders for worksheets that are due or overdue';
 
+  /// A second channel so a school alert is distinguishable from a worksheet
+  /// nag in the phone's notification settings.
+  static const noticeChannelId = 'notice_reminders';
+  static const _noticeChannelName = 'School notices';
+  static const _noticeChannelDescription =
+      'Reminders for exams, assignments and events read from your school app';
+
+  /// Payload prefix for a tap on anything notice-related.
+  static const noticePayloadPrefix = 'notice:';
+
   bool _ready = false;
+
+  /// The payload of the notification the parent last tapped — a record id
+  /// for a worksheet reminder, `notice:<id>` for a school notice. The app
+  /// shell listens and navigates; consumed by setting it back to null.
+  final ValueNotifier<String?> tapped = ValueNotifier<String?>(null);
+
+  /// Whether Android will honour exact alarms. Null until checked; false
+  /// means notice reminders may land up to an hour late (§F).
+  bool? _exactAllowed;
+  bool? get exactAlarmsAllowed => _exactAllowed;
 
   Future<void> init() async {
     if (_ready) return;
@@ -63,20 +98,42 @@ class NotificationService {
             requestSoundPermission: false,
           ),
         ),
+        onDidReceiveNotificationResponse: (response) =>
+            tapped.value = response.payload,
       );
 
-      await _plugin
+      // A tap that launched the app from cold arrives here rather than
+      // through the callback above.
+      final launch = await _plugin.getNotificationAppLaunchDetails();
+      if (launch?.didNotificationLaunchApp == true) {
+        tapped.value = launch!.notificationResponse?.payload;
+      }
+
+      final android = _plugin
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.createNotificationChannel(
-            const AndroidNotificationChannel(
-              _channelId,
-              _channelName,
-              description: _channelDescription,
-              importance: Importance.defaultImportance,
-            ),
-          );
+          >();
+      await android?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          _channelId,
+          _channelName,
+          description: _channelDescription,
+          importance: Importance.defaultImportance,
+        ),
+      );
+      await android?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          noticeChannelId,
+          _noticeChannelName,
+          description: _noticeChannelDescription,
+          importance: Importance.high,
+        ),
+      );
+      try {
+        _exactAllowed = await android?.canScheduleExactNotifications();
+      } catch (_) {
+        _exactAllowed = null;
+      }
 
       FirebaseMessaging.onBackgroundMessage(
         firebaseMessagingBackgroundHandler,
@@ -172,6 +229,118 @@ class NotificationService {
     for (final record in records) {
       await scheduleWorksheetReminder(record);
     }
+  }
+
+  // ── School notices (prompt 03 §D) ───────────────────────────────────────
+
+  /// Asks Android 13+ for the exact-alarm permission. Returns whether it
+  /// ended up granted; a refusal is normal and the reminders still fire,
+  /// just inexactly.
+  Future<bool> requestExactAlarms() async {
+    try {
+      final android = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      if (android == null) return false;
+      await android.requestExactAlarmsPermission();
+      _exactAllowed = await android.canScheduleExactNotifications();
+      return _exactAllowed ?? false;
+    } catch (_) {
+      return _exactAllowed ?? false;
+    }
+  }
+
+  @override
+  Future<List<int>> scheduleNoticeReminders(
+    CapturedNotice notice,
+    List<DateTime> times,
+  ) async {
+    if (!_ready) return const [];
+    if (!PrefsService.instance.remindersEnabled) return const [];
+    final extraction = notice.extraction;
+    if (extraction == null) return const [];
+
+    final ids = <int>[];
+    final now = tz.TZDateTime.now(tz.local);
+    for (var i = 0; i < times.length && i < NoticeReminders.maxPerNotice; i++) {
+      final t = times[i];
+      final when = tz.TZDateTime(tz.local, t.year, t.month, t.day, t.hour, t.minute);
+      if (!when.isAfter(now)) continue;
+      final id = NoticeReminders.notificationId(notice.id, i);
+      final date = extraction.date!;
+      final dayDiff = DateTime(date.year, date.month, date.day)
+          .difference(DateTime(t.year, t.month, t.day))
+          .inDays;
+      final title = switch (dayDiff) {
+        <= 0 => '${extraction.kind.label} today · ${notice.displayTitle}',
+        1 => '${extraction.kind.label} tomorrow · ${notice.displayTitle}',
+        _ => '${extraction.kind.label} in $dayDiff days · ${notice.displayTitle}',
+      };
+      try {
+        await _plugin.zonedSchedule(
+          id: id,
+          title: title,
+          body: 'From ${notice.appLabel}. Tap to open the notice.',
+          scheduledDate: when,
+          // Exact when the parent granted it (07:00 sharp), inexact
+          // otherwise — the OS may then deliver up to an hour late.
+          androidScheduleMode: _exactAllowed == true
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              : AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: '$noticePayloadPrefix${notice.id}',
+          notificationDetails: const NotificationDetails(
+            android: AndroidNotificationDetails(
+              noticeChannelId,
+              _noticeChannelName,
+              channelDescription: _noticeChannelDescription,
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(),
+          ),
+        );
+        ids.add(id);
+      } catch (_) {
+        // One slot failing (exact alarm refused mid-way, say) must not lose
+        // the others.
+      }
+    }
+    return ids;
+  }
+
+  @override
+  Future<void> cancelNoticeReminders(List<int> ids) async {
+    if (!_ready) return;
+    for (final id in ids) {
+      try {
+        await _plugin.cancel(id: id);
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Future<void> showNoticeArmed(CapturedNotice notice) async {
+    if (!_ready) return;
+    if (!PrefsService.instance.remindersEnabled) return;
+    try {
+      await _plugin.show(
+        id: NoticeReminders.notificationId(notice.id, NoticeReminders.armedSlot),
+        title: 'Reminder added from ${notice.appLabel}',
+        body: '${notice.displayTitle} — tap to review',
+        payload: '$noticePayloadPrefix${notice.id}',
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            noticeChannelId,
+            _noticeChannelName,
+            channelDescription: _noticeChannelDescription,
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+          ),
+          iOS: DarwinNotificationDetails(),
+        ),
+      );
+    } catch (_) {}
   }
 
   /// Android notification ids are 32-bit; hash the document id into range.

@@ -45,7 +45,9 @@ class _AddExamPageState extends State<AddExamPage> {
 
   bool _saving = false;
 
-  bool get _isEditing => widget.existing != null;
+  /// A draft handed in with no id (a converted school notice) is still a
+  /// new exam, not an edit.
+  bool get _isEditing => widget.existing?.id.isNotEmpty == true;
   bool get _canSave =>
       !_saving &&
       _subject != null &&
@@ -142,13 +144,17 @@ class _AddExamPageState extends State<AddExamPage> {
       examType: examType,
       examTimetable: _timetable,
       attachments: _previousPapers,
+      notes: widget.existing?.notes ?? '',
+      origin: widget.existing?.origin ?? RecordOrigin.manual,
       createdAt: widget.existing?.createdAt,
     );
 
     try {
-      await state.saveRecord(record);
+      final saved = await state.saveRecord(record);
       if (!mounted) return;
-      navigator.pop();
+      // Handed back so a caller that drafted this (notice → exam) can link
+      // the record it became.
+      navigator.pop(saved);
       AppToast.showOn(
         messenger,
         context,

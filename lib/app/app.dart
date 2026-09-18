@@ -23,7 +23,8 @@ class ParentAcademicDiaryApp extends StatefulWidget {
   State<ParentAcademicDiaryApp> createState() => _ParentAcademicDiaryAppState();
 }
 
-class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
+class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp>
+    with WidgetsBindingObserver {
   final AppState _state = AppState();
   final ShareIntentService _share = ShareIntentService();
   final NotificationService _notifications = NotificationService.instance;
@@ -39,9 +40,14 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
   bool _notificationsGranted = false;
   bool _remindersResynced = false;
 
+  /// Whether this sign-in has already drained the notice buffer and run the
+  /// retention purge. Reset when the user changes.
+  String? _noticesStartedFor;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.startupError == null) {
       unawaited(_start());
     }
@@ -52,8 +58,39 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
     await _notifications.init();
     _state.addListener(_onStateChanged);
     _share.incoming.addListener(_onSharedFiles);
+    _notifications.tapped.addListener(_onNotificationTapped);
     await _share.start();
     unawaited(_requestNotificationPermission());
+    _onNotificationTapped();
+  }
+
+  /// Prompt 03 §B: the listener buffers while Flutter is not running, so
+  /// every return to the foreground re-checks the permission and drains.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _state.authStatus == AuthStatus.ready) {
+      unawaited(_state.refreshNoticeCapture());
+    }
+  }
+
+  /// A tapped reminder opens what it was about: a worksheet, or a notice.
+  /// Held until the parent is signed in with a child, like a share.
+  void _onNotificationTapped() {
+    final payload = _notifications.tapped.value;
+    if (payload == null || payload.isEmpty) return;
+    if (_state.authStatus != AuthStatus.ready) return;
+    _notifications.tapped.value = null;
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+    if (payload.startsWith(NotificationService.noticePayloadPrefix)) {
+      navigator.pushNamed(
+        Routes.noticeDetail,
+        arguments: payload.substring(NotificationService.noticePayloadPrefix.length),
+      );
+    } else {
+      navigator.pushNamed(Routes.worksheetDetail, arguments: payload);
+    }
   }
 
   Future<void> _requestNotificationPermission() async {
@@ -81,6 +118,15 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
       _remindersResynced = true;
       unawaited(_notifications.resyncAll(_state.pendingWorksheets));
     }
+    // Once per sign-in: drain whatever the listener buffered while the app
+    // was closed, and drop notices past the retention window.
+    if (_state.authStatus == AuthStatus.ready &&
+        _noticesStartedFor != _state.uid) {
+      _noticesStartedFor = _state.uid;
+      unawaited(_state.refreshNoticeCapture());
+      unawaited(_state.purgeOldNotices());
+      _onNotificationTapped();
+    }
   }
 
   void _onSharedFiles() {
@@ -104,8 +150,10 @@ class _ParentAcademicDiaryAppState extends State<ParentAcademicDiaryApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _state.removeListener(_onStateChanged);
     _share.incoming.removeListener(_onSharedFiles);
+    _notifications.tapped.removeListener(_onNotificationTapped);
     unawaited(_share.dispose());
     _state.dispose();
     super.dispose();

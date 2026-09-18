@@ -34,6 +34,35 @@ service cloud.firestore {
         allow delete: if isOwner(uid);
       }
 
+      // Captured school notifications (prompt 03). Parent-level: a notice
+      // arrives before anyone knows which child it is about. The body is
+      // other people's text, so it is bounded, kept only for a retention
+      // window, and — unlike every other collection — really deletable:
+      // the retention purge and "Delete all captured notices" both remove
+      // documents rather than flagging them.
+      match /notices/{noticeId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidNotice();
+        allow delete: if isOwner(uid);
+
+        function isValidNotice() {
+          let data = request.resource.data;
+          return isNonEmptyString(data.packageName, 200)
+                 && isNonEmptyString(data.sourceHash, 64)
+                 && data.title is string
+                 && data.title.size() <= 300
+                 && data.body is string
+                 && data.body.size() <= 4000
+                 && (data.title.size() > 0 || data.body.size() > 0)
+                 && data.postedAt is timestamp
+                 && data.status in ['needsReview', 'confirmed', 'ignored', 'converted']
+                 && data.isDeleted is bool
+                 && data.reminderIds is list
+                 && data.reminderIds.size() <= 8
+                 && (data.extraction == null || data.extraction is map);
+        }
+      }
+
       match /children/{childId} {
         allow read: if isOwner(uid);
         allow create, update: if isOwner(uid)

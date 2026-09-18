@@ -53,7 +53,8 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
 
   bool _saving = false;
 
-  bool get _isEditing => widget.existing != null;
+  /// A draft handed in with no id is a new worksheet, not an edit.
+  bool get _isEditing => widget.existing?.id.isNotEmpty == true;
   bool get _canSave => !_saving && _chapters.isNotEmpty && _subject != null;
 
   /// An existing chapter-wide hard-words file the parent can reuse instead of

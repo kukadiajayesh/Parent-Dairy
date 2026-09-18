@@ -390,6 +390,60 @@ class AiService {
     );
   }
 
+  // ── prompt 03 §C stage 2 ────────────────────────────────────────────────
+
+  /// Classifies up to ten notices in one call with the cheap classification
+  /// model. The caller scrubs the text and validates every date; this only
+  /// asks and parses. Returns one entry per `id` the model answered for.
+  Future<Map<String, NoticeModelReading>> classifyNotices({
+    required List<({String id, String title, String body, DateTime postedAt})> notices,
+    required Child child,
+    required List<String> subjects,
+    CancellationToken? cancel,
+  }) async {
+    if (notices.isEmpty) return const {};
+    final model = _modelFor(AiTask.classification);
+    final system = AiPrompts.classifyNotices(
+      grade: AiRedaction.gradeContext(child),
+      subjects: subjects,
+    );
+    final body = jsonEncode({
+      'notices': [
+        for (final n in notices.take(10))
+          {
+            'id': n.id,
+            'title': AiRedaction.scrub(n.title, child),
+            'text': AiRedaction.scrub(n.body, child),
+            'postedAt': n.postedAt.toIso8601String(),
+          },
+      ],
+    });
+    _assertClean('$system\n$body', child);
+    final result = await _run(
+      'classifyNotices',
+      model,
+      () => _client.generate(
+        GeminiRequest(
+          model: model,
+          systemInstruction: system,
+          parts: [TextPart(body)],
+          responseSchema: GeminiSchemas.noticeExtraction,
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+          timeout: const Duration(seconds: 60),
+        ),
+        parse: (json) => {
+          for (final m in J.maps(json['notices']))
+            if (J.str(m['id']).isNotEmpty) J.str(m['id']): NoticeModelReading.fromJson(m),
+        },
+        cancel: cancel,
+      ),
+    );
+    return {
+      for (final e in result.value.entries) e.key: e.value.copyWith(model: result.model),
+    };
+  }
+
   // ── plumbing ────────────────────────────────────────────────────────────
 
   /// Prompt 02 §B.5: over six images, count the tokens first and let the

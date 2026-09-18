@@ -90,6 +90,15 @@
       ]
     },
     {
+      "//": "Captured school notices, newest posted first (prompt 03).",
+      "collectionGroup": "notices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "postedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "//": "Child list, oldest first, excluding soft-deleted profiles.",
       "collectionGroup": "children",
       "queryScope": "COLLECTION",

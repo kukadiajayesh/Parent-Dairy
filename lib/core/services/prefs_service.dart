@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/models.dart';
 import '../config/feature_flags.dart';
 import 'ai/ai_models.dart';
 
@@ -98,6 +101,151 @@ class PrefsService {
   Future<void> setAiModelFor(AiTask task, String? model) => model == null
       ? _prefs.remove('$_kAiModelPrefix${task.name}')
       : _prefs.setString('$_kAiModelPrefix${task.name}', model);
+
+  // ── Notification capture (prompt 03) ────────────────────────────────────
+  //
+  // Device settings, not account data: which apps this phone watches, the
+  // per-app rule, reminder offsets and the cost guards. The captured text
+  // itself goes to Firestore, never here.
+
+  static const _kNoticesEnabled = 'notices.enabled';
+  static const _kNoticesEnabledAt = 'notices.enabledAt';
+  static const _kNoticeDisclosureAt = 'notices.disclosure.at';
+  static const _kNoticePackages = 'notices.packages';
+  static const _kNoticeRules = 'notices.rules';
+  static const _kNoticeChildMap = 'notices.childMap';
+  static const _kNoticeOffsets = 'notices.offsets';
+  static const _kNoticeRetentionDays = 'notices.retentionDays';
+  static const _kNoticeAutoArmed = 'notices.autoArmed';
+  static const _kNoticeAiDay = 'notices.ai.day';
+  static const _kNoticeAiCount = 'notices.ai.count';
+  static const _kNoticeBatteryHint = 'notices.batteryHintShown';
+  static const _kNoticeInexactNoted = 'notices.inexactNoted';
+  static const _kNoticeLastDrainAt = 'notices.lastDrainAt';
+
+  bool get noticesEnabled => _prefs.getBool(_kNoticesEnabled) ?? false;
+  Future<void> setNoticesEnabled(bool value) async {
+    await _prefs.setBool(_kNoticesEnabled, value);
+    if (value && _prefs.getInt(_kNoticesEnabledAt) == null) {
+      await _prefs.setInt(_kNoticesEnabledAt, DateTime.now().millisecondsSinceEpoch);
+    }
+  }
+
+  DateTime? get noticesEnabledAt => _millis(_kNoticesEnabledAt);
+
+  /// When the §H disclosure was accepted. Null until the parent has read it.
+  DateTime? get noticeDisclosureAt => _millis(_kNoticeDisclosureAt);
+  Future<void> setNoticeDisclosureAccepted() =>
+      _prefs.setInt(_kNoticeDisclosureAt, DateTime.now().millisecondsSinceEpoch);
+
+  /// The opted-in package names, in the order the parent ticked them.
+  List<String> get noticePackages => _prefs.getStringList(_kNoticePackages) ?? const [];
+  Future<void> setNoticePackages(List<String> value) =>
+      _prefs.setStringList(_kNoticePackages, value);
+
+  Map<String, NoticeAppRule> get noticeRules => {
+    for (final e in _jsonMap(_kNoticeRules).entries)
+      e.key: NoticeAppRule.fromWire(e.value?.toString()),
+  };
+  Future<void> setNoticeRule(String packageName, NoticeAppRule rule) =>
+      _setJsonMap(_kNoticeRules, {..._jsonMap(_kNoticeRules), packageName: rule.wire});
+
+  /// package → childId, remembered the first time the parent picks a child
+  /// for an app's notice (§F).
+  Map<String, String> get noticeChildMap => {
+    for (final e in _jsonMap(_kNoticeChildMap).entries) e.key: e.value.toString(),
+  };
+  Future<void> setNoticeChild(String packageName, String childId) =>
+      _setJsonMap(_kNoticeChildMap, {..._jsonMap(_kNoticeChildMap), packageName: childId});
+
+  /// Reminder offsets per kind, or null to use the defaults.
+  Map<NoticeKind, List<int>>? get noticeOffsets {
+    final raw = _jsonMap(_kNoticeOffsets);
+    if (raw.isEmpty) return null;
+    return {
+      for (final e in raw.entries)
+        NoticeKind.fromWire(e.key): [
+          if (e.value is List)
+            for (final v in e.value as List)
+              if (v is num) v.toInt(),
+        ],
+    };
+  }
+
+  Future<void> setNoticeOffsets(NoticeKind kind, List<int> days) => _setJsonMap(
+    _kNoticeOffsets,
+    {..._jsonMap(_kNoticeOffsets), kind.wire: days},
+  );
+
+  int get noticeRetentionDays => _prefs.getInt(_kNoticeRetentionDays) ?? 180;
+  Future<void> setNoticeRetentionDays(int days) => _prefs.setInt(_kNoticeRetentionDays, days);
+
+  /// Timestamps of every auto-armed notice in the last seven days — the
+  /// weekly cap (§D) counts these.
+  List<DateTime> noticeAutoArmed(DateTime now) => [
+    for (final s in _prefs.getStringList(_kNoticeAutoArmed) ?? const <String>[])
+      if (DateTime.tryParse(s) case final d? when now.difference(d) < const Duration(days: 7)) d,
+  ];
+
+  Future<void> recordNoticeAutoArmed(DateTime now) => _prefs.setStringList(
+    _kNoticeAutoArmed,
+    [for (final d in noticeAutoArmed(now)) d.toIso8601String(), now.toIso8601String()],
+  );
+
+  /// Stage-2 cost guard: Gemini classification calls made today.
+  int noticeAiCallsToday(DateTime now) {
+    final day = _prefs.getString(_kNoticeAiDay);
+    return day == _dayKey(now) ? (_prefs.getInt(_kNoticeAiCount) ?? 0) : 0;
+  }
+
+  Future<void> recordNoticeAiCall(DateTime now) async {
+    final count = noticeAiCallsToday(now) + 1;
+    await _prefs.setString(_kNoticeAiDay, _dayKey(now));
+    await _prefs.setInt(_kNoticeAiCount, count);
+  }
+
+  bool get noticeBatteryHintShown => _prefs.getBool(_kNoticeBatteryHint) ?? false;
+  Future<void> setNoticeBatteryHintShown() => _prefs.setBool(_kNoticeBatteryHint, true);
+
+  bool get noticeInexactNoted => _prefs.getBool(_kNoticeInexactNoted) ?? false;
+  Future<void> setNoticeInexactNoted() => _prefs.setBool(_kNoticeInexactNoted, true);
+
+  DateTime? get noticeLastDrainAt => _millis(_kNoticeLastDrainAt);
+  Future<void> setNoticeLastDrainAt(DateTime at) =>
+      _prefs.setInt(_kNoticeLastDrainAt, at.millisecondsSinceEpoch);
+
+  /// Everything notification capture keeps here. "Delete all" and the
+  /// master switch going off call this.
+  Future<void> clearNoticeScoped({bool keepSettings = false}) async {
+    final keep = keepSettings
+        ? {_kNoticePackages, _kNoticeRules, _kNoticeChildMap, _kNoticeOffsets, _kNoticeRetentionDays, _kNoticeDisclosureAt}
+        : <String>{};
+    for (final key in _prefs.getKeys().where((k) => k.startsWith('notices.') && !keep.contains(k))) {
+      await _prefs.remove(key);
+    }
+  }
+
+  DateTime? _millis(String key) {
+    final ms = _prefs.getInt(key);
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  Map<String, Object?> _jsonMap(String key) {
+    try {
+      final raw = _prefs.getString(key);
+      if (raw == null) return const {};
+      final decoded = jsonDecode(raw);
+      return decoded is Map ? Map<String, Object?>.from(decoded) : const {};
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> _setJsonMap(String key, Map<String, Object?> value) =>
+      _prefs.setString(key, jsonEncode(value));
+
+  static String _dayKey(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   /// The raw store, for the AI helpers that keep their own small JSON blobs
   /// (activity log, model list cache, uploaded-file cache) under their own

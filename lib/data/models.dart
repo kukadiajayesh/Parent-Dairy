@@ -768,3 +768,327 @@ class ExamResult {
     );
   }
 }
+
+// ── Captured school notices (prompt 03) ───────────────────────────────────
+
+/// What a school notification is about, as the extractor read it.
+enum NoticeKind {
+  exam('exam', 'Exam'),
+  assignment('assignment', 'Assignment'),
+  activity('activity', 'Activity'),
+  holiday('holiday', 'Holiday'),
+  fee('fee', 'Fee'),
+  meeting('meeting', 'Meeting'),
+  announcement('announcement', 'Announcement'),
+  unknown('unknown', 'Unsorted');
+
+  const NoticeKind(this.wire, this.label);
+  final String wire;
+  final String label;
+
+  static NoticeKind fromWire(String? value) => switch (value) {
+    'exam' => NoticeKind.exam,
+    'assignment' => NoticeKind.assignment,
+    'activity' => NoticeKind.activity,
+    'holiday' => NoticeKind.holiday,
+    'fee' => NoticeKind.fee,
+    'meeting' => NoticeKind.meeting,
+    'announcement' => NoticeKind.announcement,
+    _ => NoticeKind.unknown,
+  };
+
+  /// Kinds that may arm a reminder without the parent's tap (§D). A fee
+  /// or holiday reminder is armed only after a confirm.
+  bool get autoArms =>
+      this == NoticeKind.exam ||
+      this == NoticeKind.assignment ||
+      this == NoticeKind.activity ||
+      this == NoticeKind.meeting;
+
+  /// Assignments and fees are "due", everything else "happens".
+  bool get isDue => this == NoticeKind.assignment || this == NoticeKind.fee;
+}
+
+/// Where a captured notice stands with the parent.
+enum NoticeStatus {
+  needsReview('needsReview', 'Needs review'),
+  confirmed('confirmed', 'Confirmed'),
+  ignored('ignored', 'Ignored'),
+  converted('converted', 'Saved as record');
+
+  const NoticeStatus(this.wire, this.label);
+  final String wire;
+  final String label;
+
+  static NoticeStatus fromWire(String? value) => switch (value) {
+    'confirmed' => NoticeStatus.confirmed,
+    'ignored' => NoticeStatus.ignored,
+    'converted' => NoticeStatus.converted,
+    _ => NoticeStatus.needsReview,
+  };
+}
+
+/// What the extractor pulled out of a notice's text — either the rules
+/// (`source: 'rules'`) or the model (`source: 'gemini'`).
+class NoticeExtraction {
+  const NoticeExtraction({
+    required this.kind,
+    required this.title,
+    this.subject,
+    this.eventAt,
+    this.endAt,
+    this.allDay = true,
+    this.dueAt,
+    this.confidence = 0,
+    this.source = 'rules',
+    this.matchedPhrases = const [],
+    this.alternateDates = const [],
+  });
+
+  final NoticeKind kind;
+
+  /// Cleaned, e.g. `Science Unit Test 2`.
+  final String title;
+
+  /// One of the child's subject names, or null when nothing matched.
+  final String? subject;
+
+  /// When the event happens. For a range, [endAt] carries the last day.
+  final DateTime? eventAt;
+  final DateTime? endAt;
+  final bool allDay;
+
+  /// When something is due — assignments and fees.
+  final DateTime? dueAt;
+
+  /// 0–1. The auto-arm policy (§D) reads this, so it is never rounded up.
+  final double confidence;
+
+  /// `rules` | `gemini`.
+  final String source;
+
+  /// The words that drove the decision, for highlighting in the UI.
+  final List<String> matchedPhrases;
+
+  /// Other dates found in the same text. A notice with more than one
+  /// candidate date always goes to the inbox rather than arming itself.
+  final List<DateTime> alternateDates;
+
+  /// The date reminders are anchored on: the due date for things that are
+  /// due, the event date for things that happen.
+  DateTime? get date => kind.isDue ? (dueAt ?? eventAt) : (eventAt ?? dueAt);
+
+  bool get hasDate => date != null;
+  bool get isAmbiguous => alternateDates.isNotEmpty;
+  bool get fromModel => source == 'gemini';
+
+  NoticeExtraction copyWith({
+    NoticeKind? kind,
+    String? title,
+    String? subject,
+    DateTime? eventAt,
+    DateTime? endAt,
+    bool? allDay,
+    DateTime? dueAt,
+    double? confidence,
+    String? source,
+    List<String>? matchedPhrases,
+    List<DateTime>? alternateDates,
+    bool clearSubject = false,
+    bool clearDates = false,
+  }) => NoticeExtraction(
+    kind: kind ?? this.kind,
+    title: title ?? this.title,
+    subject: clearSubject ? null : (subject ?? this.subject),
+    eventAt: clearDates ? null : (eventAt ?? this.eventAt),
+    endAt: clearDates ? null : (endAt ?? this.endAt),
+    allDay: allDay ?? this.allDay,
+    dueAt: clearDates ? null : (dueAt ?? this.dueAt),
+    confidence: confidence ?? this.confidence,
+    source: source ?? this.source,
+    matchedPhrases: matchedPhrases ?? this.matchedPhrases,
+    alternateDates: clearDates ? const [] : (alternateDates ?? this.alternateDates),
+  );
+
+  /// Moves the anchor date to [value], keeping the time of day when the
+  /// notice carried one — what the detail screen's date picker calls.
+  NoticeExtraction withDate(DateTime value) {
+    final current = date;
+    final stamped = allDay || current == null
+        ? DateTime(value.year, value.month, value.day)
+        : DateTime(value.year, value.month, value.day, current.hour, current.minute);
+    return kind.isDue
+        ? copyWith(dueAt: stamped, eventAt: stamped, endAt: null, alternateDates: const [])
+        : copyWith(eventAt: stamped, dueAt: stamped, endAt: null, alternateDates: const []);
+  }
+
+  Map<String, Object?> toJson() => {
+    'kind': kind.wire,
+    'title': title,
+    'subject': subject,
+    'eventAt': eventAt?.toIso8601String(),
+    'endAt': endAt?.toIso8601String(),
+    'allDay': allDay,
+    'dueAt': dueAt?.toIso8601String(),
+    'confidence': confidence,
+    'source': source,
+    'matchedPhrases': matchedPhrases,
+    'alternateDates': [for (final d in alternateDates) d.toIso8601String()],
+  };
+}
+
+/// One notification captured from a school app.
+///
+/// Parent-level, not child-level: a notification arrives before anyone knows
+/// which child it is about, and the parent assigns one on confirm.
+class CapturedNotice {
+  const CapturedNotice({
+    required this.id,
+    required this.packageName,
+    required this.appLabel,
+    required this.title,
+    required this.body,
+    required this.postedAt,
+    required this.sourceHash,
+    this.childId,
+    this.status = NoticeStatus.needsReview,
+    this.extraction,
+    this.linkedRecordId,
+    this.reminderIds = const [],
+    this.truncated = false,
+    this.autoArmedAt,
+    this.createdAt,
+    this.updatedAt,
+    this.isDeleted = false,
+    this.deletedAt,
+  });
+
+  final String id;
+  final String packageName;
+  final String appLabel;
+  final String title;
+
+  /// First 4000 characters of the notification text; [truncated] says
+  /// whether anything was cut.
+  final String body;
+  final DateTime postedAt;
+
+  /// `sha1(packageName|title|body|yyyy-MM-dd)` — the document id is derived
+  /// from it, so the same notice on two phones is one document.
+  final String sourceHash;
+
+  /// Assigned by the parent or inferred from the app → child mapping.
+  final String? childId;
+  final NoticeStatus status;
+  final NoticeExtraction? extraction;
+
+  /// The [DiaryRecord] this notice became, when converted.
+  final String? linkedRecordId;
+
+  /// Local notification ids scheduled from this notice — what cancel walks.
+  final List<int> reminderIds;
+  final bool truncated;
+
+  /// Set when the auto-arm policy scheduled reminders without a tap. The
+  /// detail screen offers Undo for 24 hours from this moment.
+  final DateTime? autoArmedAt;
+
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final bool isDeleted;
+  final DateTime? deletedAt;
+
+  NoticeKind get kind => extraction?.kind ?? NoticeKind.unknown;
+  double get confidence => extraction?.confidence ?? 0;
+  DateTime? get date => extraction?.date;
+  String get displayTitle {
+    final t = extraction?.title.trim() ?? '';
+    if (t.isNotEmpty) return t;
+    if (title.trim().isNotEmpty) return title.trim();
+    final firstLine = body.trim().split('\n').first.trim();
+    return firstLine.length > 80 ? '${firstLine.substring(0, 80)}…' : firstLine;
+  }
+
+  bool get needsReview => status == NoticeStatus.needsReview;
+  bool get isConfirmed => status == NoticeStatus.confirmed;
+  bool get isArmed => reminderIds.isNotEmpty;
+
+  /// Inbox membership (§E): still needing review and worth a tap — kind or
+  /// date known, confidence at least 0.5.
+  bool get inInbox => needsReview && confidence >= 0.5;
+
+  /// Confirmed with an event on or after [now]'s date.
+  bool isUpcoming(DateTime now) {
+    final d = date;
+    if (!isConfirmed || d == null) return false;
+    final today = DateTime(now.year, now.month, now.day);
+    return !d.isBefore(today);
+  }
+
+  bool canUndoAutoArm(DateTime now) {
+    final at = autoArmedAt;
+    return at != null &&
+        status == NoticeStatus.confirmed &&
+        now.difference(at) < const Duration(hours: 24);
+  }
+
+  CapturedNotice copyWith({
+    String? id,
+    String? packageName,
+    String? appLabel,
+    String? title,
+    String? body,
+    DateTime? postedAt,
+    String? sourceHash,
+    String? childId,
+    NoticeStatus? status,
+    NoticeExtraction? extraction,
+    String? linkedRecordId,
+    List<int>? reminderIds,
+    bool? truncated,
+    DateTime? autoArmedAt,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    bool? isDeleted,
+    DateTime? deletedAt,
+    bool clearChildId = false,
+    bool clearAutoArmedAt = false,
+  }) => CapturedNotice(
+    id: id ?? this.id,
+    packageName: packageName ?? this.packageName,
+    appLabel: appLabel ?? this.appLabel,
+    title: title ?? this.title,
+    body: body ?? this.body,
+    postedAt: postedAt ?? this.postedAt,
+    sourceHash: sourceHash ?? this.sourceHash,
+    childId: clearChildId ? null : (childId ?? this.childId),
+    status: status ?? this.status,
+    extraction: extraction ?? this.extraction,
+    linkedRecordId: linkedRecordId ?? this.linkedRecordId,
+    reminderIds: reminderIds ?? this.reminderIds,
+    truncated: truncated ?? this.truncated,
+    autoArmedAt: clearAutoArmedAt ? null : (autoArmedAt ?? this.autoArmedAt),
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    isDeleted: isDeleted ?? this.isDeleted,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+}
+
+/// Per-app capture rule (§E), kept in preferences rather than Firestore
+/// because it is a device setting.
+enum NoticeAppRule {
+  all('all', 'Capture everything'),
+  keywords('keywords', 'Only when it looks like a notice'),
+  off('off', 'Off');
+
+  const NoticeAppRule(this.wire, this.label);
+  final String wire;
+  final String label;
+
+  static NoticeAppRule fromWire(String? value) => switch (value) {
+    'keywords' => NoticeAppRule.keywords,
+    'off' => NoticeAppRule.off,
+    _ => NoticeAppRule.all,
+  };
+}

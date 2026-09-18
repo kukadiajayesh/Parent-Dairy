@@ -176,6 +176,32 @@ class _MorePageState extends State<MorePage> {
                         ),
                     ],
                   ),
+                  if (state.noticeCaptureSupported) ...[
+                    const SizedBox(height: 20),
+                    const SectionLabel('School notices'),
+                    const SizedBox(height: 10),
+                    SettingsGroup(
+                      children: [
+                        SettingsRow(
+                          label: 'Notices',
+                          subtitle: 'Exams, deadlines and events read from your school app',
+                          value: state.noticeInboxCount == 0
+                              ? null
+                              : '${state.noticeInboxCount} to review',
+                          leading: StrokeIcon(AppIcons.bell, size: 18, color: k.priInk),
+                          onTap: () => Navigator.of(context, rootNavigator: true)
+                              .pushNamed(Routes.notices),
+                        ),
+                        SettingsRow(
+                          label: 'Notification capture',
+                          subtitle: 'Which apps are read, reminders, retention',
+                          value: state.noticeCaptureEnabled ? 'On' : 'Off',
+                          onTap: () => Navigator.of(context, rootNavigator: true)
+                              .pushNamed(Routes.noticeSettings),
+                        ),
+                      ],
+                    ),
+                  ],
                   if (kAiEnabled) ...[
                     const SizedBox(height: 20),
                     const SectionLabel('AI'),

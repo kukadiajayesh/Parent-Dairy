@@ -18,6 +18,10 @@ import '../features/classwork/add_classwork_page.dart';
 import '../features/classwork/classwork_detail_page.dart';
 import '../features/exam/add_exam_page.dart';
 import '../features/exam/exam_detail_page.dart';
+import '../features/notices/notice_detail_page.dart';
+import '../features/notices/notice_disclosure_page.dart';
+import '../features/notices/notice_settings_page.dart';
+import '../features/notices/notices_page.dart';
 import '../features/onboarding/onboarding_page.dart';
 import '../features/onboarding/splash_page.dart';
 import '../features/picker/picker_page.dart';
@@ -68,6 +72,13 @@ abstract final class Routes {
   static const gradePaper = '/ai/grade-paper';
   static const scanResult = '/ai/scan-result';
   static const focusPlan = '/ai/focus-plan';
+
+  // Notification capture (prompt 03) — Android only; the screens render an
+  // "Android only" state elsewhere rather than being unreachable.
+  static const notices = '/notices';
+  static const noticeDetail = '/notices/detail';
+  static const noticeSettings = '/notices/settings';
+  static const noticeDisclosure = '/notices/disclosure';
 
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     Route<T> page<T>(Widget child) =>
@@ -154,6 +165,14 @@ abstract final class Routes {
         );
       case focusPlan:
         return page(const FocusPlanPage());
+      case notices:
+        return page(NoticesPage(initialTab: settings.arguments as int? ?? 0));
+      case noticeDetail:
+        return page(NoticeDetailPage(noticeId: settings.arguments! as String));
+      case noticeSettings:
+        return page(const NoticeSettingsPage());
+      case noticeDisclosure:
+        return page<bool>(NoticeDisclosurePage(readOnly: settings.arguments == true));
       default:
         return null;
     }

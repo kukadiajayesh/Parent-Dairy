@@ -641,6 +641,10 @@ void main() {
       find.text('Empty, loading & error states'),
       200,
     );
+    // The More page grew a "School notices" group (prompt 03); the row can
+    // sit in the cache extent below the viewport, where a tap misses it.
+    await tester.ensureVisible(find.text('Empty, loading & error states'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Empty, loading & error states'));
     await tester.pumpAndSettle();
 

@@ -127,6 +127,17 @@ abstract final class Telemetry {
   static Future<void> aiFailed(String feature, String kind) =>
       _event('ai_failed', {'feature': feature, 'kind': kind});
 
+  // ── Notification capture (prompt 03) — kind and source only, never the
+  // app name, the title or a word of the notice.
+  static Future<void> noticeConfirmed(String kind, String source) =>
+      _event('notice_confirmed', {'kind': kind, 'source': source});
+
+  static Future<void> noticeIgnored(String kind) =>
+      _event('notice_ignored', {'kind': kind});
+
+  static Future<void> noticeConverted(String recordType) =>
+      _event('notice_converted', {'record_type': recordType});
+
   static Future<void> signIn() => _event('login', {'method': 'google'});
 
   static Future<void> signOut() => _event('sign_out');

@@ -18,6 +18,12 @@
     <!-- §24: due-date reminders. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Prompt 03 §D: school-notice reminders at 07:00 sharp. Android 13+
+         asks the parent to grant this in system settings; when refused the
+         app falls back to inexact alarms and says so in Notification capture
+         settings. USE_EXACT_ALARM is deliberately not requested — Play
+         restricts it to alarm-clock and calendar apps. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
 
     <application
         android:label="Academic Diary"
@@ -72,6 +78,39 @@
             </intent-filter>
         </activity>
 
+        <!-- Prompt 03 §A: reads notifications from the apps the parent ticked
+             (and only those — the service checks its opt-in set before it
+             touches a notification). Bound by the system, never exported.
+             Requires the Play Console "Notification listener" declaration. -->
+        <service
+            android:name=".notifications.DiaryNotificationListener"
+            android:label="Academic Diary notice capture"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
+
+        <!-- flutter_local_notifications ships these receivers but, since its
+             v16, no longer declares them: without the first, a scheduled
+             reminder never fires; without the second, every reminder is lost
+             on reboot or app update. Both worksheet and notice reminders
+             depend on them. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false"/>
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+
         <!-- image_cropper's editor. Declared here because the plugin ships the
              activity but not the manifest entry. -->
         <activity
@@ -98,6 +137,12 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Prompt 03 §E: the watched-apps picker lists launchable apps. On
+             Android 11+ that list is empty without this query filter. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

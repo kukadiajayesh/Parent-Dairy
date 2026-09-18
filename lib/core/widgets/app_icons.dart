@@ -168,6 +168,17 @@ abstract final class AppIcons {
     strokeWidth: 1.8,
   );
 
+  // ── Notification capture (prompt 03) ─────────────────────────────────────
+
+  /// A bell — Notices and Notification capture.
+  static const bell = SvgIcon(
+    [
+      'M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z',
+      'M10 20a2 2 0 0 0 4 0',
+    ],
+    strokeWidth: 1.9,
+  );
+
   // ── Bottom navigation ────────────────────────────────────────────────────
   static const navHome =
       SvgIcon(['M4 11l8-6.5 8 6.5v8a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z']);

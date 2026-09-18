@@ -16,6 +16,7 @@ import '../../data/app_state.dart';
 import '../../data/models.dart';
 import '../../shell/shell_scope.dart';
 import '../children/child_switcher_sheet.dart';
+import '../notices/notice_widgets.dart';
 import '../performance/insight_widgets.dart';
 import '../search/search_page.dart';
 import '../settings/year_switcher_sheet.dart';
@@ -41,6 +42,7 @@ class HomePage extends StatelessWidget {
     final state = AppScope.of(context);
     final pending = state.pendingWorksheets;
     final recent = state.recordsByDateDesc.take(3).toList();
+    final upcomingNotices = state.noticeCaptureSupported ? state.upcomingFromSchool : const <CapturedNotice>[];
 
     return Scaffold(
       backgroundColor: k.bg,
@@ -135,6 +137,21 @@ class HomePage extends StatelessWidget {
                     _PendingBanner(count: pending.length),
                     const SizedBox(height: 12),
                     _PendingCarousel(records: pending),
+                  ],
+                  // Prompt 03 §E.4: only when a confirmed school notice falls
+                  // in the next fortnight — never an empty strip.
+                  if (upcomingNotices.isNotEmpty) ...[
+                    const SizedBox(height: 22),
+                    SectionLabel(
+                      'Upcoming from school',
+                      trailing: SectionAction(
+                        label: 'View all',
+                        onTap: () => Navigator.of(context, rootNavigator: true)
+                            .pushNamed(Routes.notices, arguments: 1),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _UpcomingNoticesStrip(notices: upcomingNotices),
                   ],
                   if (kShowExamMarks) ...[
                     const SizedBox(height: 22),
@@ -802,6 +819,67 @@ class _LatestMarks extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Confirmed school notices due in the next fourteen days, soonest first.
+class _UpcomingNoticesStrip extends StatelessWidget {
+  const _UpcomingNoticesStrip({required this.notices});
+
+  final List<CapturedNotice> notices;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.t;
+    final root = Navigator.of(context, rootNavigator: true);
+    return SizedBox(
+      height: 132,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        padding: EdgeInsets.zero,
+        itemCount: notices.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final n = notices[index];
+          return SizedBox(
+            width: 196,
+            child: AppCard(
+              radius: 18,
+              onTap: () => root.pushNamed(Routes.noticeDetail, arguments: n.id),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      NoticeKindChip(n.kind),
+                      const Spacer(),
+                      ConfidenceDot(n.confidence, size: 8),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: Text(
+                      n.displayTitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, height: 1.35),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${AppDate.dueLabel(n.date!)} · ${n.appLabel}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: k.tx3),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
