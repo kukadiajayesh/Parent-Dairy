@@ -6,6 +6,7 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
@@ -246,8 +247,10 @@ class _HueSwatch extends StatelessWidget {
     final k = context.t;
     return Tooltip(
       message: hue.label,
-      child: GestureDetector(
+      child: AppInkWell(
         onTap: onTap,
+        customBorder: const CircleBorder(),
+        haptic: true,
         child: Container(
           width: 44,
           height: 44,
@@ -289,7 +292,7 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return InkWell(
+    return AppInkWell(
       onTap: () => onChanged(!value),
       borderRadius: BorderRadius.circular(16),
       child: Container(

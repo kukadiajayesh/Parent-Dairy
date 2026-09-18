@@ -8,6 +8,7 @@ import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/fields.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/sheets.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/attachment_image.dart';
@@ -223,7 +224,7 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
                   ],
                   Row(
                     children: [
-                      InkWell(
+                      AppInkWell(
                         onTap: _pickPhoto,
                         customBorder: const CircleBorder(),
                         child: Container(

@@ -11,7 +11,7 @@ import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
 import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/layout.dart';
-import '../../core/widgets/sheets.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
@@ -49,7 +49,7 @@ class _ShareImagePageState extends State<ShareImagePage> {
 
   RecordType _type = RecordType.worksheet;
   String? _subject;
-  List<String> _chapters = const [];
+  final List<String> _chapters = [];
   DateTime _date = DateUtils.dateOnly(DateTime.now());
   DateTime? _dueDate;
   Attachment? _answerKey;
@@ -86,14 +86,18 @@ class _ShareImagePageState extends State<ShareImagePage> {
     super.dispose();
   }
 
-  Future<void> _pickChapters() async {
-    final choice = await pickMultipleOptions(
-      context,
-      title: 'Chapters',
-      options: kChapterOptions,
-      initial: _chapters,
-    );
-    if (choice != null) setState(() => _chapters = choice);
+  /// Chapters toggle in place, so the list is kept in [kChapterOptions] order
+  /// rather than tap order — the record's derived title takes the first
+  /// chapter, and "Chapter 2 +1" reads better than "Chapter 5 +1" for the
+  /// same pair.
+  void _toggleChapter(String chapter) {
+    setState(() {
+      if (!_chapters.remove(chapter)) _chapters.add(chapter);
+      _chapters.sort(
+        (a, b) =>
+            kChapterOptions.indexOf(a).compareTo(kChapterOptions.indexOf(b)),
+      );
+    });
   }
 
   Future<void> _pickAnswerKey() async {
@@ -149,7 +153,7 @@ class _ShareImagePageState extends State<ShareImagePage> {
         // The files are spent; what carries over is the context a parent
         // filing a batch would otherwise re-enter every time.
         setState(() {
-          _chapters = const [];
+          _chapters.clear();
           _notes.clear();
           _dueDate = null;
           _answerKey = null;
@@ -253,29 +257,13 @@ class _ShareImagePageState extends State<ShareImagePage> {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  if (_chapters.isEmpty)
-                    PickerField(
-                      label: 'Chapters',
-                      value: 'Select chapters',
-                      isPlaceholder: true,
-                      onTap: _pickChapters,
-                    )
-                  else ...[
-                    FieldLabel('Chapters', emphasis: FieldEmphasis.primary),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final chapter in _chapters)
-                          AppChip(
-                            label: chapter,
-                            selected: true,
-                            onTap: _pickChapters,
-                          ),
-                      ],
-                    ),
-                  ],
+                  FieldLabel('Chapters', emphasis: FieldEmphasis.primary),
+                  const SizedBox(height: 8),
+                  MultiSelectChips(
+                    options: kChapterOptions,
+                    selected: _chapters,
+                    onToggle: _toggleChapter,
+                  ),
                   const SizedBox(height: 14),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,21 +418,23 @@ class _TypeSegments extends StatelessWidget {
     Widget segment(RecordType type, String label) {
       final selected = value == type;
       return Expanded(
-        child: Material(
-          color: selected ? k.priFill : Colors.transparent,
-          borderRadius: BorderRadius.circular(11),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () => onChanged(type),
-            child: SizedBox(
-              height: 44,
-              child: Center(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? k.surf : k.tx3,
+        child: PressDip(
+          child: Material(
+            color: selected ? k.priFill : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+            clipBehavior: Clip.antiAlias,
+            child: AppInkWell(
+              onTap: () => onChanged(type),
+              child: SizedBox(
+                height: 44,
+                child: Center(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? k.surf : k.tx3,
+                    ),
                   ),
                 ),
               ),
@@ -488,25 +478,27 @@ class _TodayField extends StatelessWidget {
       children: [
         const FieldLabel('Date'),
         const SizedBox(height: 6),
-        Material(
-          color: isToday ? k.secC : k.surf2,
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: isToday ? k.sec : k.bd3, width: 1.5),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            child: Container(
-              height: 54,
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Text(
-                isToday ? 'Today' : AppDate.full(date),
-                style: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
-                  color: isToday ? k.secInk : k.tx,
+        PressDip(
+          child: Material(
+            color: isToday ? k.secC : k.surf2,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: isToday ? k.sec : k.bd3, width: 1.5),
+            ),
+            child: AppInkWell(
+              onTap: onTap,
+              child: Container(
+                height: 54,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Text(
+                  isToday ? 'Today' : AppDate.full(date),
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
+                    color: isToday ? k.secInk : k.tx,
+                  ),
                 ),
               ),
             ),
@@ -542,8 +534,11 @@ class _SharedFileStrip extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final file = files[index];
-          return GestureDetector(
+          return AppInkWell(
             onTap: () => onSelect(index),
+            borderRadius: BorderRadius.circular(12),
+            overlay: true,
+            haptic: true,
             child: SizedBox(
               width: 62,
               child: Stack(
@@ -562,18 +557,20 @@ class _SharedFileStrip extends StatelessWidget {
                   Positioned(
                     top: 2,
                     right: 2,
-                    child: Material(
-                      color: k.bg.withValues(alpha: .9),
-                      shape: const CircleBorder(),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () => onRemove(index),
-                        child: Padding(
-                          padding: const EdgeInsets.all(3),
-                          child: StrokeIcon(
-                            AppIcons.close,
-                            size: 12,
-                            color: k.err,
+                    child: PressDip(
+                      child: Material(
+                        color: k.bg.withValues(alpha: .9),
+                        shape: const CircleBorder(),
+                        clipBehavior: Clip.antiAlias,
+                        child: AppInkWell(
+                          onTap: () => onRemove(index),
+                          child: Padding(
+                            padding: const EdgeInsets.all(3),
+                            child: StrokeIcon(
+                              AppIcons.close,
+                              size: 12,
+                              color: k.err,
+                            ),
                           ),
                         ),
                       ),

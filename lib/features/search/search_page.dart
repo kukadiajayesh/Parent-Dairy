@@ -9,6 +9,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
@@ -151,7 +152,7 @@ class _SearchPageState extends State<SearchPage> {
                             ),
                           ),
                           if (hasQuery)
-                            InkWell(
+                            AppInkWell(
                               onTap: () {
                                 _controller.clear();
                                 _onQueryChanged();
@@ -171,7 +172,7 @@ class _SearchPageState extends State<SearchPage> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  InkWell(
+                  AppInkWell(
                     onTap: () => Navigator.of(context).pop(),
                     borderRadius: BorderRadius.circular(10),
                     child: Padding(

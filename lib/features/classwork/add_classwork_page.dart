@@ -8,8 +8,8 @@ import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
-import '../../core/widgets/sheets.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
@@ -35,7 +35,9 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
       TextEditingController(text: widget.existing?.notes ?? '');
 
   String? _subject;
-  late List<String> _chapters = List.of(widget.existing?.chapters ?? const []);
+  late final List<String> _chapters = List.of(
+    widget.existing?.chapters ?? const [],
+  );
 
   /// §37: today by default.
   late DateTime _date =
@@ -64,14 +66,18 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
     super.dispose();
   }
 
-  Future<void> _pickChapters() async {
-    final choice = await pickMultipleOptions(
-      context,
-      title: 'Chapters',
-      options: kChapterOptions,
-      initial: _chapters,
-    );
-    if (choice != null) setState(() => _chapters = choice);
+  /// Chapters toggle in place, so the list is kept in [kChapterOptions] order
+  /// rather than tap order — the record's derived title takes the first
+  /// chapter, and "Chapter 2 +1" reads better than "Chapter 5 +1" for the
+  /// same pair.
+  void _toggleChapter(String chapter) {
+    setState(() {
+      if (!_chapters.remove(chapter)) _chapters.add(chapter);
+      _chapters.sort(
+        (a, b) =>
+            kChapterOptions.indexOf(a).compareTo(kChapterOptions.indexOf(b)),
+      );
+    });
   }
 
   Future<void> _addPhotos([AttachmentSource source = AttachmentSource.camera]) async {
@@ -177,29 +183,13 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  if (_chapters.isEmpty)
-                    PickerField(
-                      label: 'Chapters',
-                      value: 'Select chapters',
-                      isPlaceholder: true,
-                      onTap: _pickChapters,
-                    )
-                  else ...[
-                    FieldLabel('Chapters', emphasis: FieldEmphasis.primary),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final chapter in _chapters)
-                          AppChip(
-                            label: chapter,
-                            selected: true,
-                            onTap: _pickChapters,
-                          ),
-                      ],
-                    ),
-                  ],
+                  FieldLabel('Chapters', emphasis: FieldEmphasis.primary),
+                  const SizedBox(height: 8),
+                  MultiSelectChips(
+                    options: kChapterOptions,
+                    selected: _chapters,
+                    onToggle: _toggleChapter,
+                  ),
                   const SizedBox(height: 18),
                   PickerField(
                     label: 'Date',
@@ -270,19 +260,21 @@ class _AddClassworkPageState extends State<AddClassworkPage> {
                               Positioned(
                                 top: 4,
                                 right: 4,
-                                child: Material(
-                                  color: k.bg.withValues(alpha: .9),
-                                  shape: const CircleBorder(),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: InkWell(
-                                    onTap: () =>
-                                        setState(() => _photos.removeAt(i)),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(4),
-                                      child: StrokeIcon(
-                                        AppIcons.close,
-                                        size: 13,
-                                        color: k.err,
+                                child: PressDip(
+                                  child: Material(
+                                    color: k.bg.withValues(alpha: .9),
+                                    shape: const CircleBorder(),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: AppInkWell(
+                                      onTap: () =>
+                                          setState(() => _photos.removeAt(i)),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: StrokeIcon(
+                                          AppIcons.close,
+                                          size: 13,
+                                          color: k.err,
+                                        ),
                                       ),
                                     ),
                                   ),

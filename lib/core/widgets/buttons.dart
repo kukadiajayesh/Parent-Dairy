@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_tokens.dart';
+import 'pressable.dart';
 
 /// Filled 52dp action button — style guide "04 — Buttons", primary variant.
 class AppFilledButton extends StatelessWidget {
@@ -190,28 +191,32 @@ class _PressableSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    return Opacity(
-      opacity: enabled ? 1 : .5,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: borderRadius,
-          boxShadow: enabled ? shadow : null,
-        ),
-        child: Material(
-          color: background,
-          // Material accepts `shape` or `borderRadius`, never both — the shape
-          // carries the same radius plus the border when one is requested.
-          shape: RoundedRectangleBorder(
+    // PressDip sits outside the shadow so a press moves the whole button,
+    // shadow included, rather than shrinking the fill inside a static one.
+    return PressDip(
+      child: Opacity(
+        opacity: enabled ? 1 : .5,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
             borderRadius: borderRadius,
-            side: border == null ? BorderSide.none : (border! as Border).top,
+            boxShadow: enabled ? shadow : null,
           ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            hoverColor: hoverBackground,
-            child: SizedBox(
-              height: height,
-              child: Center(child: child),
+          child: Material(
+            color: background,
+            // Material accepts `shape` or `borderRadius`, never both — the shape
+            // carries the same radius plus the border when one is requested.
+            shape: RoundedRectangleBorder(
+              borderRadius: borderRadius,
+              side: border == null ? BorderSide.none : (border! as Border).top,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: AppInkWell(
+              onTap: onTap,
+              hoverColor: hoverBackground,
+              child: SizedBox(
+                height: height,
+                child: Center(child: child),
+              ),
             ),
           ),
         ),
@@ -244,14 +249,19 @@ class AppIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    Widget button = Material(
-      color: background ?? Colors.transparent,
-      borderRadius: BorderRadius.circular(borderRadius),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        hoverColor: hoverBackground ?? k.surf2,
-        child: SizedBox.square(dimension: size, child: Center(child: child)),
+    Widget button = PressDip(
+      child: Material(
+        color: background ?? Colors.transparent,
+        borderRadius: BorderRadius.circular(borderRadius),
+        clipBehavior: Clip.antiAlias,
+        child: AppInkWell(
+          onTap: onTap,
+          hoverColor: hoverBackground ?? k.surf2,
+          child: SizedBox.square(
+            dimension: size,
+            child: Center(child: child),
+          ),
+        ),
       ),
     );
     if (tooltip != null) button = Tooltip(message: tooltip!, child: button);

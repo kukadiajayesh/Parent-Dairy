@@ -4,6 +4,7 @@ import '../../app/routes.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/stroke_icon.dart';
 import 'attach_answer_key_page.dart';
 import 'share_image_page.dart';
@@ -105,48 +106,50 @@ class _ChoiceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return Material(
-      color: k.surf,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: tint,
-                  borderRadius: BorderRadius.circular(14),
+    return PressDip(
+      child: Material(
+        color: k.surf,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: AppInkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: tint,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: StrokeIcon(icon, size: 20, color: ink),
                 ),
-                child: StrokeIcon(icon, size: 20, color: ink),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w700,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      description,
-                      style: TextStyle(fontSize: 12.5, color: k.tx3),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        style: TextStyle(fontSize: 12.5, color: k.tx3),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              StrokeIcon(AppIcons.forward, size: 16, color: k.tx4),
-            ],
+                StrokeIcon(AppIcons.forward, size: 16, color: k.tx4),
+              ],
+            ),
           ),
         ),
       ),

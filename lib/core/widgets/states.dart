@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
 import 'app_icons.dart';
 import 'buttons.dart';
+import 'pressable.dart';
 import 'stroke_icon.dart';
 
 /// Full empty state: the stacked-pages illustration, a headline, a supporting
@@ -313,7 +314,7 @@ class InlineErrorBanner extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          InkWell(
+          AppInkWell(
             onTap: onAction,
             borderRadius: BorderRadius.circular(8),
             child: Padding(
@@ -378,7 +379,7 @@ class OfflineBanner extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          InkWell(
+          AppInkWell(
             onTap: onDismiss,
             borderRadius: BorderRadius.circular(8),
             child: Padding(
@@ -565,7 +566,7 @@ class DashedContainer extends StatelessWidget {
       child: child,
     );
     if (onTap == null) return content;
-    return InkWell(
+    return AppInkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(radius),
       child: content,

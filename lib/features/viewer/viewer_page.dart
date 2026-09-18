@@ -6,6 +6,7 @@ import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/image_slot.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/models.dart';
@@ -250,8 +251,9 @@ class _ViewerPageState extends State<ViewerPage> {
                         itemBuilder: (context, index) {
                           final item = _items[index];
                           if (item.isPdf) {
-                            return GestureDetector(
+                            return AppInkWell(
                               onTap: () => _controller.jumpToPage(index),
+                              borderRadius: BorderRadius.circular(10),
                               child: Container(
                                 width: 58,
                                 height: 58,
@@ -321,20 +323,22 @@ class _ArrowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: .5),
-      shape: const CircleBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox.square(
-          dimension: 38,
-          child: Center(
-            child: StrokeIcon(
-              icon,
-              size: 20,
-              color: Colors.white,
-              strokeWidth: 2.2,
+    return PressDip(
+      child: Material(
+        color: Colors.black.withValues(alpha: .5),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: AppInkWell(
+          onTap: onTap,
+          child: SizedBox.square(
+            dimension: 38,
+            child: Center(
+              child: StrokeIcon(
+                icon,
+                size: 20,
+                color: Colors.white,
+                strokeWidth: 2.2,
+              ),
             ),
           ),
         ),

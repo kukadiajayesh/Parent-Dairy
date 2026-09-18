@@ -7,6 +7,7 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
@@ -142,51 +143,53 @@ class _AddYearPageState extends State<AddYearPage> {
                   const SizedBox(height: 18),
                   const FieldLabel('For child'),
                   const SizedBox(height: 6),
-                  Material(
-                    color: k.surf2,
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      side: BorderSide(color: k.bd3, width: 1.5),
-                    ),
-                    child: InkWell(
-                      onTap: () => ChildSwitcherSheet.show(context),
-                      child: Container(
-                        height: 64,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        child: Row(
-                          children: [
-                            Monogram(initials: child.initials),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    child.name,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
+                  PressDip(
+                    child: Material(
+                      color: k.surf2,
+                      clipBehavior: Clip.antiAlias,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(color: k.bd3, width: 1.5),
+                      ),
+                      child: AppInkWell(
+                        onTap: () => ChildSwitcherSheet.show(context),
+                        child: Container(
+                          height: 64,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: Row(
+                            children: [
+                              Monogram(initials: child.initials),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      child.name,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    'Currently ${child.grade} ${child.section}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: k.tx3,
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      'Currently ${child.grade} ${child.section}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: k.tx3,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                            StrokeIcon(
-                              AppIcons.caretDown,
-                              size: 16,
-                              color: k.tx3,
-                            ),
-                          ],
+                              StrokeIcon(
+                                AppIcons.caretDown,
+                                size: 16,
+                                color: k.tx3,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -265,7 +268,7 @@ class _ToggleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return InkWell(
+    return AppInkWell(
       onTap: () => onChanged(!value),
       borderRadius: BorderRadius.circular(16),
       child: Container(

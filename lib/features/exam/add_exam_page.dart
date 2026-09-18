@@ -10,6 +10,7 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
@@ -310,20 +311,22 @@ class _AddExamPageState extends State<AddExamPage> {
                               Positioned(
                                 top: 4,
                                 right: 4,
-                                child: Material(
-                                  color: k.bg.withValues(alpha: .9),
-                                  shape: const CircleBorder(),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: InkWell(
-                                    onTap: () => setState(
-                                      () => _previousPapers.removeAt(i),
-                                    ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(4),
-                                      child: StrokeIcon(
-                                        AppIcons.close,
-                                        size: 13,
-                                        color: k.err,
+                                child: PressDip(
+                                  child: Material(
+                                    color: k.bg.withValues(alpha: .9),
+                                    shape: const CircleBorder(),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: AppInkWell(
+                                      onTap: () => setState(
+                                        () => _previousPapers.removeAt(i),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: StrokeIcon(
+                                          AppIcons.close,
+                                          size: 13,
+                                          color: k.err,
+                                        ),
                                       ),
                                     ),
                                   ),

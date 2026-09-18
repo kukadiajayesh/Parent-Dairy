@@ -53,6 +53,23 @@ abstract final class ImageService {
 
   static const Set<String> allowedExtensions = {'jpg', 'jpeg', 'png', 'pdf'};
 
+  /// Where a picked file's working copy lives from the moment it is picked
+  /// until it is either uploaded or discarded.
+  ///
+  /// Deliberately not [getTemporaryDirectory]: that directory is the OS's to
+  /// reclaim under storage pressure, and a worksheet photographed with no
+  /// signal (§25, §32) can sit staged for a while before the upload queue
+  /// gets a connection to drain it. A file the OS is free to delete out from
+  /// under a still-pending upload is exactly what leaves a saved record with
+  /// no local copy and no download URL — permanently unable to show a
+  /// preview anywhere it is browsed.
+  static Future<Directory> _stagingDir() async {
+    final support = await getApplicationSupportDirectory();
+    final dir = Directory('${support.path}/staged_attachments');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
   /// Captures one photo. Returns null when the parent backs out.
   static Future<PickedAttachment?> capture() async {
     try {
@@ -122,12 +139,9 @@ abstract final class ImageService {
           final size = await File(path).length();
           _guardSize(size);
 
-          final tempDir = await getTemporaryDirectory();
-          final targetFolder = Directory('${tempDir.path}/attachments');
-          if (!await targetFolder.exists()) {
-            await targetFolder.create(recursive: true);
-          }
-          final safeName = '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
+          final targetFolder = await _stagingDir();
+          final safeName =
+              '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
           final localCopy = File('${targetFolder.path}/$safeName');
           await File(path).copy(localCopy.path);
 
@@ -180,7 +194,7 @@ abstract final class ImageService {
       if (cropped == null) return source;
       final size = await File(cropped.path).length();
       return PickedAttachment(
-        path: cropped.path,
+        path: await _persist(cropped.path, source.name),
         name: source.name,
         bytes: size,
         isPdf: false,
@@ -242,7 +256,7 @@ abstract final class ImageService {
 
     if (original <= compressAboveBytes) {
       return PickedAttachment(
-        path: path,
+        path: await _persist(path, name),
         name: name,
         bytes: original,
         isPdf: false,
@@ -264,7 +278,7 @@ abstract final class ImageService {
       );
       if (out == null) {
         return PickedAttachment(
-          path: path,
+          path: await _persist(path, name),
           name: name,
           bytes: original,
           isPdf: false,
@@ -275,7 +289,7 @@ abstract final class ImageService {
       // Never keep a "compressed" file that came out bigger.
       if (compressed >= original) {
         return PickedAttachment(
-          path: path,
+          path: await _persist(path, name),
           name: name,
           bytes: original,
           isPdf: false,
@@ -293,13 +307,25 @@ abstract final class ImageService {
       // Compression is an optimisation. If the codec refuses a file, upload the
       // original rather than dropping the parent's photo.
       return PickedAttachment(
-        path: path,
+        path: await _persist(path, name),
         name: name,
         bytes: original,
         isPdf: false,
         mimeType: _mimeFor(ext),
       );
     }
+  }
+
+  /// Copies a file the plugin (image_picker, image_cropper, file_picker) left
+  /// in its own volatile cache into [_stagingDir], so the working copy
+  /// survives independently of whatever that plugin does with its temp file
+  /// next.
+  static Future<String> _persist(String path, String name) async {
+    final dir = await _stagingDir();
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final target = File('${dir.path}/${stamp}_$name');
+    await File(path).copy(target.path);
+    return target.path;
   }
 
   static void _guardSize(int bytes) {
@@ -313,7 +339,7 @@ abstract final class ImageService {
   }
 
   static Future<String> _tempPath(String name, {String suffix = 'cmp'}) async {
-    final dir = await getTemporaryDirectory();
+    final dir = await _stagingDir();
     final stamp = DateTime.now().microsecondsSinceEpoch;
     return '${dir.path}/${stamp}_$suffix${_asJpeg(name)}';
   }

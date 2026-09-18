@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/routes.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
@@ -135,42 +136,44 @@ class _GoogleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return Material(
-      color: k.surf,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: k.bd4, width: 1.5),
-      ),
-      child: InkWell(
-        onTap: onPressed,
-        hoverColor: k.hov2,
-        child: SizedBox(
-          height: 56,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (busy)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    color: k.tx3,
+    return PressDip(
+      child: Material(
+        color: k.surf,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: k.bd4, width: 1.5),
+        ),
+        child: AppInkWell(
+          onTap: onPressed,
+          hoverColor: k.hov2,
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (busy)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: k.tx3,
+                    ),
+                  )
+                else
+                  const _GoogleMark(size: 20),
+                const SizedBox(width: 12),
+                Text(
+                  busy ? 'Signing in…' : 'Continue with Google',
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    color: busy ? k.tx3 : k.tx,
                   ),
-                )
-              else
-                const _GoogleMark(size: 20),
-              const SizedBox(width: 12),
-              Text(
-                busy ? 'Signing in…' : 'Continue with Google',
-                style: TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w700,
-                  color: busy ? k.tx3 : k.tx,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -237,7 +240,7 @@ class _LegalLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return InkWell(
+    return AppInkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(6),
       child: Padding(

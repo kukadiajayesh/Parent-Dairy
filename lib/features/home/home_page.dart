@@ -5,10 +5,11 @@ import '../../core/config/feature_flags.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
-import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
+import '../../core/widgets/image_slot.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../data/app_state.dart';
@@ -38,7 +39,7 @@ class HomePage extends StatelessWidget {
     final k = context.t;
     final state = AppScope.of(context);
     final pending = state.pendingWorksheets;
-    final recent = state.recordsByDateDesc.take(5).toList();
+    final recent = state.recordsByDateDesc.take(3).toList();
 
     return Scaffold(
       backgroundColor: k.bg,
@@ -170,78 +171,85 @@ class _ChildYearRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Material(
-            color: k.surf,
-            shape: StadiumBorder(side: BorderSide(color: k.bd2)),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => ChildSwitcherSheet.show(context),
-              hoverColor: k.hov2,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
-                child: Row(
-                  children: [
-                    Monogram(initials: child.initials),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            child.name,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              height: 1.2,
+          child: PressDip(
+            child: Material(
+              color: k.surf,
+              shape: StadiumBorder(side: BorderSide(color: k.bd2)),
+              clipBehavior: Clip.antiAlias,
+              child: AppInkWell(
+                onTap: () => ChildSwitcherSheet.show(context),
+                hoverColor: k.hov2,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
+                  child: Row(
+                    children: [
+                      Monogram(initials: child.initials),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              child.name,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
                             ),
-                          ),
-                          Text(
-                            '${child.grade} · ${state.activeYear}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: k.tx3),
-                          ),
-                        ],
+                            Text(
+                              '${child.grade} · ${state.activeYear}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12, color: k.tx3),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    StrokeIcon(AppIcons.caretDown, size: 16, color: k.tx3),
-                  ],
+                      StrokeIcon(AppIcons.caretDown, size: 16, color: k.tx3),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
         const SizedBox(width: 10),
-        Material(
-          color: k.surf2,
-          borderRadius: BorderRadius.circular(18),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () => YearSwitcherSheet.show(context),
-            hoverColor: k.hov,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'YEAR',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: .6,
-                      color: k.tx4,
+        PressDip(
+          child: Material(
+            color: k.surf2,
+            borderRadius: BorderRadius.circular(18),
+            clipBehavior: Clip.antiAlias,
+            child: AppInkWell(
+              onTap: () => YearSwitcherSheet.show(context),
+              hoverColor: k.hov,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'YEAR',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: .6,
+                        color: k.tx4,
+                      ),
                     ),
-                  ),
-                  Text(
-                    state.activeYear,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                    Text(
+                      state.activeYear,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -365,65 +373,71 @@ class _AddFromImageBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: k.secFill.withValues(alpha: .24),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Material(
-        color: k.secFill,
-        borderRadius: BorderRadius.circular(20),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          hoverColor: k.secFillH,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: .18),
-                    borderRadius: BorderRadius.circular(14),
+    // PressDip outside the shadow: a press moves the banner and its glow
+    // together rather than shrinking the fill inside a static halo.
+    return PressDip(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: k.secFill.withValues(alpha: .24),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Material(
+          color: k.secFill,
+          borderRadius: BorderRadius.circular(20),
+          clipBehavior: Clip.antiAlias,
+          child: AppInkWell(
+            onTap: onTap,
+            hoverColor: k.secFillH,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .18),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const StrokeIcon(
+                      AppIcons.upload,
+                      size: 22,
+                      color: Colors.white,
+                    ),
                   ),
-                  child: const StrokeIcon(
-                    AppIcons.upload,
-                    size: 22,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Add from Image',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Add from Image',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
                         ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Share a photo straight into the diary',
-                        style:
-                            TextStyle(fontSize: 12.5, color: Color(0xFFCADED9)),
-                      ),
-                    ],
+                        SizedBox(height: 2),
+                        Text(
+                          'Share a photo straight into the diary',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFFCADED9),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -590,16 +604,19 @@ class _RecentRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          record.attachments.isNotEmpty || record.answerKey != null
-              ? attachmentThumb(
-                  context,
-                  record.attachments.firstOrNull ?? record.answerKey,
-                  radius: 12,
-                  width: 38,
-                  height: 38,
-                  showCaption: false,
-                )
-              : SubjectBadge(abbr: subject.abbr, hue: subject.hue),
+          // A plain glyph tile, never the file itself: the dashboard wants a
+          // uniform, instantly-painted thumbnail column, and a real preview
+          // here would cost a PDF page render per row for a 38dp square.
+          ThumbPlaceholder(
+            icon: switch (record.type) {
+              RecordType.worksheet => AppIcons.document,
+              RecordType.classwork => AppIcons.camera,
+              RecordType.exam => AppIcons.calendar,
+            },
+            size: 38,
+            radius: 12,
+            iconSize: 19,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

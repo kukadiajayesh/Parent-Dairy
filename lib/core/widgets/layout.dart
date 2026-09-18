@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
 import 'app_icons.dart';
 import 'buttons.dart';
+import 'pressable.dart';
 import 'stroke_icon.dart';
 
 /// 11/700 uppercase section heading with 1.2px tracking ("Overline").
@@ -38,7 +39,7 @@ class SectionAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return InkWell(
+    return AppInkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
@@ -94,7 +95,7 @@ class AppCard extends StatelessWidget {
       clipBehavior: clip || onTap != null ? Clip.antiAlias : Clip.none,
       child: onTap == null
           ? Padding(padding: padding, child: child)
-          : InkWell(
+          : AppInkWell(
               onTap: onTap,
               hoverColor: k.hov2,
               child: Padding(padding: padding, child: child),
@@ -116,7 +117,8 @@ class AppCard extends StatelessWidget {
         child: card,
       );
     }
-    return card;
+    // Outermost, so a press takes the card's shadow with it.
+    return PressDip(child: card);
   }
 }
 
@@ -281,50 +283,52 @@ class SettingsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        hoverColor: hoverColor ?? k.bg,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-          child: Row(
-            children: [
-              if (leading != null) ...[leading!, const SizedBox(width: 10)],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: labelColor != null
-                            ? FontWeight.w700
-                            : FontWeight.w600,
-                        color: labelColor ?? k.tx,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
+    return PressDip(
+      child: Material(
+        color: Colors.transparent,
+        child: AppInkWell(
+          onTap: onTap,
+          hoverColor: hoverColor ?? k.bg,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+            child: Row(
+              children: [
+                if (leading != null) ...[leading!, const SizedBox(width: 10)],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        subtitle!,
-                        style: TextStyle(fontSize: 12, color: k.tx4),
+                        label,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: labelColor != null
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                          color: labelColor ?? k.tx,
+                        ),
                       ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: TextStyle(fontSize: 12, color: k.tx4),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              if (value != null) ...[
-                const SizedBox(width: 12),
-                Text(value!, style: TextStyle(fontSize: 12.5, color: k.tx4)),
+                if (value != null) ...[
+                  const SizedBox(width: 12),
+                  Text(value!, style: TextStyle(fontSize: 12.5, color: k.tx4)),
+                ],
+                if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+                if (showChevron) ...[
+                  const SizedBox(width: 12),
+                  StrokeIcon(AppIcons.forward, size: 17, color: k.tx5),
+                ],
               ],
-              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
-              if (showChevron) ...[
-                const SizedBox(width: 12),
-                StrokeIcon(AppIcons.forward, size: 17, color: k.tx5),
-              ],
-            ],
+            ),
           ),
         ),
       ),

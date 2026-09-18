@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../core/config/feature_flags.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/widgets/app_icons.dart';
+import '../core/widgets/pressable.dart';
 import '../core/widgets/stroke_icon.dart';
 import '../features/home/home_page.dart';
 import '../features/settings/more_page.dart';
@@ -168,7 +169,7 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final k = context.t;
     final color = selected ? k.priInk : k.tx3;
-    return InkWell(
+    return AppInkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Padding(

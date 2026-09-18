@@ -9,6 +9,8 @@ import '../services/pdf_thumbnail_service.dart';
 import '../theme/app_tokens.dart';
 import 'app_icons.dart';
 import 'image_slot.dart';
+import 'pressable.dart';
+import 'states.dart';
 import 'stroke_icon.dart';
 
 /// Resolves an [Attachment] to something [Image] can draw.
@@ -63,13 +65,13 @@ Widget attachmentThumb(
       showCaption: showCaption,
     );
     if (onTap != null) {
-      tile = Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(radius),
-          onTap: onTap,
-          child: tile,
-        ),
+      // Same as [ImageSlot]: a rendered PDF page is opaque, so the ink goes
+      // over the tile rather than behind it.
+      tile = AppInkWell(
+        borderRadius: BorderRadius.circular(radius),
+        onTap: onTap,
+        overlay: true,
+        child: tile,
       );
     }
     if (width != null || height != null) {
@@ -142,10 +144,21 @@ Widget pickedAttachmentThumb(
   );
 }
 
-/// Renders a PDF attachment's first page via [PdfThumbnailService]. Shows the
-/// familiar "PDF" icon tile while the page renders (or if it never can — a
-/// corrupt file, or a remote-only copy with no signal to fetch it), and
-/// fades in the real page once ready.
+/// Renders a PDF attachment's first page via [PdfThumbnailService] and fades
+/// it in once ready.
+///
+/// The three outcomes look different on purpose. A render in flight shows a
+/// shimmering skeleton, so a slot that is still working never reads as a slot
+/// that has given up — the whole point of the preview is that the parent can
+/// tell one worksheet from another at a glance. Only once every attempt has
+/// failed (a corrupt file, or a remote-only copy with no signal to fetch it)
+/// does it settle on the generic "PDF" tile.
+///
+/// Renders are serialized behind a single lock in [PdfThumbnailService], so on
+/// a screen full of cards the later ones legitimately take a moment, and the
+/// first attempt can also lose to a file that is still downloading. A null
+/// result is therefore retried a couple of times with a short backoff rather
+/// than being treated as final.
 class _PdfThumb extends StatefulWidget {
   const _PdfThumb({
     required this.attachment,
@@ -162,84 +175,132 @@ class _PdfThumb extends StatefulWidget {
 }
 
 class _PdfThumbState extends State<_PdfThumb> {
-  late Future<Uint8List?> _future = PdfThumbnailService.thumbnailFor(
-    widget.attachment,
-  );
+  static const _maxAttempts = 3;
+
+  Uint8List? _bytes;
+  bool _loading = true;
+
+  /// Identifies the file the in-flight render belongs to, so a result that
+  /// lands after the slot has been recycled onto another attachment is
+  /// dropped instead of painting the wrong page.
+  late String _key = PdfThumbnailService.cacheKey(widget.attachment);
+
+  @override
+  void initState() {
+    super.initState();
+    _load(widget.attachment, _key);
+  }
 
   @override
   void didUpdateWidget(covariant _PdfThumb oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.attachment.id != widget.attachment.id ||
-        oldWidget.attachment.localPath != widget.attachment.localPath ||
-        oldWidget.attachment.downloadUrl != widget.attachment.downloadUrl ||
-        oldWidget.attachment.storagePath != widget.attachment.storagePath ||
-        oldWidget.attachment.sync != widget.attachment.sync) {
-      _future = PdfThumbnailService.thumbnailFor(widget.attachment);
+    final key = PdfThumbnailService.cacheKey(widget.attachment);
+    if (key == _key &&
+        oldWidget.attachment.sync == widget.attachment.sync &&
+        oldWidget.attachment.downloadUrl == widget.attachment.downloadUrl) {
+      return;
     }
+    // Assigned rather than setState-ed: the rebuild this runs inside will
+    // pick the new state up on its own.
+    _key = key;
+    _bytes = null;
+    _loading = true;
+    _load(widget.attachment, key);
+  }
+
+  Future<void> _load(Attachment attachment, String key) async {
+    for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
+      final bytes = await PdfThumbnailService.thumbnailFor(attachment);
+      if (!mounted || key != _key) return;
+      if (bytes != null && bytes.isNotEmpty) {
+        setState(() {
+          _bytes = bytes;
+          _loading = false;
+        });
+        return;
+      }
+      if (attempt < _maxAttempts) {
+        await Future<void>.delayed(Duration(milliseconds: 350 * attempt));
+        if (!mounted || key != _key) return;
+      }
+    }
+
+    setState(() => _loading = false);
   }
 
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return Container(
-      color: k.surf2,
-      child: FutureBuilder<Uint8List?>(
-        future: _future,
-        builder: (context, snapshot) {
-          final bytes = snapshot.data;
-          if (bytes == null) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  StrokeIcon(AppIcons.document, size: 22, color: k.tx3),
-                  if (widget.showCaption) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'PDF',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: k.tx3,
-                      ),
-                    ),
-                  ],
-                ],
+    final bytes = _bytes;
+
+    if (bytes != null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+          ),
+          Positioned(
+            left: 6,
+            bottom: 6,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: .72),
+                borderRadius: BorderRadius.circular(6),
               ),
-            );
-          }
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.memory(
-                bytes,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.medium,
-              ),
-              Positioned(
-                left: 6,
-                bottom: 6,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: .72),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    child: Text(
-                      'PDF',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Text(
+                  'PDF',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
                   ),
                 ),
               ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_loading) {
+      return Skeletons(
+        child: Container(
+          color: k.skel,
+          alignment: Alignment.center,
+          child: StrokeIcon(
+            AppIcons.document,
+            size: 20,
+            color: k.tx4.withValues(alpha: .6),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      color: k.surf2,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            StrokeIcon(AppIcons.document, size: 22, color: k.tx3),
+            if (widget.showCaption) ...[
+              const SizedBox(height: 4),
+              Text(
+                'PDF',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: k.tx3,
+                ),
+              ),
             ],
-          );
-        },
+          ],
+        ),
       ),
     );
   }

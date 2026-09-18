@@ -10,7 +10,7 @@ import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/fields.dart';
 import '../../core/widgets/layout.dart';
-import '../../core/widgets/sheets.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
@@ -36,7 +36,9 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
       TextEditingController(text: widget.existing?.notes ?? '');
 
   String? _subject;
-  late List<String> _chapters = List.of(widget.existing?.chapters ?? const []);
+  late final List<String> _chapters = List.of(
+    widget.existing?.chapters ?? const [],
+  );
 
   /// §37: today, not a fixed sample date — a parent recording a worksheet is
   /// almost always recording today's.
@@ -138,14 +140,18 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
     });
   }
 
-  Future<void> _pickChapters() async {
-    final choice = await pickMultipleOptions(
-      context,
-      title: 'Chapters',
-      options: kChapterOptions,
-      initial: _chapters,
-    );
-    if (choice != null) setState(() => _chapters = choice);
+  /// Chapters toggle in place, so the list is kept in [kChapterOptions] order
+  /// rather than tap order — the record's derived title takes the first
+  /// chapter, and "Chapter 2 +1" reads better than "Chapter 5 +1" for the
+  /// same pair.
+  void _toggleChapter(String chapter) {
+    setState(() {
+      if (!_chapters.remove(chapter)) _chapters.add(chapter);
+      _chapters.sort(
+        (a, b) =>
+            kChapterOptions.indexOf(a).compareTo(kChapterOptions.indexOf(b)),
+      );
+    });
   }
 
   Future<void> _addHardWords(AttachmentSource source) async {
@@ -258,29 +264,13 @@ class _AddWorksheetPageState extends State<AddWorksheetPage> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  if (_chapters.isEmpty)
-                    PickerField(
-                      label: 'Chapters',
-                      value: 'Select chapters',
-                      isPlaceholder: true,
-                      onTap: _pickChapters,
-                    )
-                  else ...[
-                    FieldLabel('Chapters', emphasis: FieldEmphasis.primary),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final chapter in _chapters)
-                          AppChip(
-                            label: chapter,
-                            selected: true,
-                            onTap: _pickChapters,
-                          ),
-                      ],
-                    ),
-                  ],
+                  FieldLabel('Chapters', emphasis: FieldEmphasis.primary),
+                  const SizedBox(height: 8),
+                  MultiSelectChips(
+                    options: kChapterOptions,
+                    selected: _chapters,
+                    onToggle: _toggleChapter,
+                  ),
                   const SizedBox(height: 18),
                   Row(
                     children: [
@@ -472,28 +462,31 @@ class _StatusChip extends StatelessWidget {
     final ink = selected ? (pending ? k.warnInk : k.subSciInk) : k.tx3;
     final dot = selected ? (pending ? k.warn : const Color(0xFF3E8168)) : k.bd5;
 
-    return Material(
-      color: background,
-      shape: StadiumBorder(side: BorderSide(color: border, width: 1.5)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Dot(color: dot, size: 7),
-              const SizedBox(width: 7),
-              Text(
-                status.label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: ink,
+    return PressDip(
+      child: Material(
+        color: background,
+        shape: StadiumBorder(side: BorderSide(color: border, width: 1.5)),
+        clipBehavior: Clip.antiAlias,
+        child: AppInkWell(
+          onTap: onTap,
+          haptic: true,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Dot(color: dot, size: 7),
+                const SizedBox(width: 7),
+                Text(
+                  status.label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: ink,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -531,18 +524,20 @@ class _AttachmentGrid extends StatelessWidget {
               Positioned(
                 top: 6,
                 right: 6,
-                child: Material(
-                  color: k.bg.withValues(alpha: .9),
-                  shape: const CircleBorder(),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => onRemove(i),
-                    child: Padding(
-                      padding: const EdgeInsets.all(5),
-                      child: StrokeIcon(
-                        AppIcons.close,
-                        size: 14,
-                        color: k.err,
+                child: PressDip(
+                  child: Material(
+                    color: k.bg.withValues(alpha: .9),
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: AppInkWell(
+                      onTap: () => onRemove(i),
+                      child: Padding(
+                        padding: const EdgeInsets.all(5),
+                        child: StrokeIcon(
+                          AppIcons.close,
+                          size: 14,
+                          color: k.err,
+                        ),
                       ),
                     ),
                   ),
@@ -550,7 +545,7 @@ class _AttachmentGrid extends StatelessWidget {
               ),
             ],
           ),
-        InkWell(
+        AppInkWell(
           onTap: onAdd,
           borderRadius: BorderRadius.circular(14),
           child: DashedContainer(

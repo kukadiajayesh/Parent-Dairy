@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/stroke_icon.dart';
 
 enum AttachmentSource { camera, gallery, files }
@@ -27,32 +28,38 @@ class AttachmentSourceRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final k = context.t;
 
-    Widget button(AttachmentSource source, String label, {bool accent = false}) {
-      return Material(
-        color: accent ? k.priC : k.surf2,
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => onPick(source),
-          hoverColor: accent ? k.priCH : k.hov,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (accent) ...[
-                  StrokeIcon(AppIcons.camera, size: 16, color: k.priInk),
-                  const SizedBox(width: 7),
-                ],
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: accent ? k.priInk : k.tx2,
+    Widget button(
+      AttachmentSource source,
+      String label, {
+      bool accent = false,
+    }) {
+      return PressDip(
+        child: Material(
+          color: accent ? k.priC : k.surf2,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: AppInkWell(
+            onTap: () => onPick(source),
+            hoverColor: accent ? k.priCH : k.hov,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (accent) ...[
+                    StrokeIcon(AppIcons.camera, size: 16, color: k.priInk),
+                    const SizedBox(width: 7),
+                  ],
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: accent ? k.priInk : k.tx2,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

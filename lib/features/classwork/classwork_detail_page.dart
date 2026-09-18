@@ -9,6 +9,7 @@ import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/sheets.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
@@ -179,7 +180,7 @@ class ClassworkDetailPage extends StatelessWidget {
                           radius: 16,
                           onTap: () => openAttachment(i),
                         ),
-                      InkWell(
+                      AppInkWell(
                         onTap: record.attachments.isEmpty
                             ? null
                             : () => openAttachment(0),

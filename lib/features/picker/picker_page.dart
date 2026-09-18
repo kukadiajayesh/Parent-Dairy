@@ -8,6 +8,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/buttons.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import 'attachment_source_row.dart';
@@ -170,7 +171,7 @@ class _PickerPageState extends State<PickerPage> {
                         ),
                       ),
                     ),
-                    InkWell(
+                    AppInkWell(
                       onTap: _shots.isEmpty ? null : _done,
                       borderRadius: BorderRadius.circular(10),
                       child: Padding(
@@ -223,7 +224,7 @@ class _PickerPageState extends State<PickerPage> {
                   separatorBuilder: (_, _) => const SizedBox(width: 10),
                   itemBuilder: (context, index) {
                     if (index == _shots.length) {
-                      return InkWell(
+                      return AppInkWell(
                         onTap: () => _pick(AttachmentSource.camera),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
@@ -244,8 +245,11 @@ class _PickerPageState extends State<PickerPage> {
                       );
                     }
                     final shot = _shots[index];
-                    return GestureDetector(
+                    return AppInkWell(
                       onTap: () => setState(() => _selected = index),
+                      borderRadius: BorderRadius.circular(12),
+                      overlay: true,
+                      haptic: true,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
@@ -373,7 +377,7 @@ class _Tool extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    return InkWell(
+    return AppInkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Opacity(

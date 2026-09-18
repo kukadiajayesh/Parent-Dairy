@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_tokens.dart';
 import 'app_icons.dart';
+import 'pressable.dart';
 import 'stroke_icon.dart';
 
 /// 12/600 caption above every input. Turns primary when the field is focused
@@ -168,41 +170,51 @@ class PickerField extends StatelessWidget {
       children: [
         FieldLabel(label),
         const SizedBox(height: 6),
-        Material(
-          color: k.surf2,
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: k.bd3, width: 1.5),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            child: Container(
-              height: 56,
-              padding: EdgeInsets.symmetric(
-                horizontal: trailing == PickerTrailing.calendar ? 14 : 16,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      value,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: trailing == PickerTrailing.calendar ? 14.5 : 15,
-                        fontWeight: FontWeight.w500,
-                        color: isPlaceholder ? k.tx6 : k.tx,
+        PressDip(
+          child: Material(
+            color: k.surf2,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: k.bd3, width: 1.5),
+            ),
+            child: AppInkWell(
+              onTap: onTap,
+              child: Container(
+                height: 56,
+                padding: EdgeInsets.symmetric(
+                  horizontal: trailing == PickerTrailing.calendar ? 14 : 16,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        value,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: trailing == PickerTrailing.calendar
+                              ? 14.5
+                              : 15,
+                          fontWeight: FontWeight.w500,
+                          color: isPlaceholder ? k.tx6 : k.tx,
+                        ),
                       ),
                     ),
-                  ),
-                  switch (trailing) {
-                    PickerTrailing.caret =>
-                      StrokeIcon(AppIcons.caretDown, size: 16, color: k.tx4),
-                    PickerTrailing.calendar =>
-                      StrokeIcon(AppIcons.calendar, size: 17, color: k.tx4),
-                    PickerTrailing.none => const SizedBox.shrink(),
-                  },
-                ],
+                    switch (trailing) {
+                      PickerTrailing.caret => StrokeIcon(
+                        AppIcons.caretDown,
+                        size: 16,
+                        color: k.tx4,
+                      ),
+                      PickerTrailing.calendar => StrokeIcon(
+                        AppIcons.calendar,
+                        size: 17,
+                        color: k.tx4,
+                      ),
+                      PickerTrailing.none => const SizedBox.shrink(),
+                    },
+                  ],
+                ),
               ),
             ),
           ),
@@ -236,7 +248,12 @@ class AppSwitch extends StatelessWidget {
     final k = context.t;
     final knob = height - 4;
     return GestureDetector(
-      onTap: onChanged == null ? null : () => onChanged!(!value),
+      onTap: onChanged == null
+          ? null
+          : () {
+              HapticFeedback.selectionClick();
+              onChanged!(!value);
+            },
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),

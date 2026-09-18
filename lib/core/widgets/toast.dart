@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../errors/app_failure.dart';
 import '../theme/app_tokens.dart';
 import 'app_icons.dart';
+import 'pressable.dart';
 import 'stroke_icon.dart';
 
 enum ToastKind { ok, warn }
@@ -122,7 +123,7 @@ abstract final class AppToast {
                 ),
               ),
               const SizedBox(width: 12),
-              InkWell(
+              AppInkWell(
                 onTap: () {
                   messenger.hideCurrentSnackBar();
                   onAction?.call();

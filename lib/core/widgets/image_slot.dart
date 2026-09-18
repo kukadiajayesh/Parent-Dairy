@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_tokens.dart';
 import 'app_icons.dart';
+import 'pressable.dart';
 import 'states.dart';
 import 'stroke_icon.dart';
 
@@ -97,9 +98,13 @@ class ImageSlot extends StatelessWidget {
 
     Widget slot = ClipRRect(borderRadius: shape, child: content);
     if (onTap != null) {
-      slot = Material(
-        color: Colors.transparent,
-        child: InkWell(borderRadius: shape, onTap: onTap, child: slot),
+      // `overlay`: an attached photo fills this slot opaquely, and ink painted
+      // on the Material underneath it would never be seen.
+      slot = AppInkWell(
+        borderRadius: shape,
+        onTap: onTap,
+        overlay: true,
+        child: slot,
       );
     }
 
@@ -107,5 +112,52 @@ class ImageSlot extends StatelessWidget {
       slot = SizedBox(width: width, height: height, child: slot);
     }
     return slot;
+  }
+}
+
+/// A static stand-in for an attachment thumbnail: a neutral rounded tile with
+/// a glyph, and nothing else.
+///
+/// Deliberately does no work — no file read, no PDF page render, no network
+/// fetch. Used where a list wants a uniform, instantly-painted thumbnail
+/// column rather than a real preview (the Home "Recent activity" rows), so a
+/// PDF row never renders differently from an image row beside it.
+class ThumbPlaceholder extends StatelessWidget {
+  const ThumbPlaceholder({
+    super.key,
+    required this.icon,
+    this.size,
+    this.width,
+    this.height,
+    this.radius = 12,
+    this.iconSize = 20,
+    this.background,
+    this.foreground,
+  });
+
+  final SvgIcon icon;
+
+  /// Convenience for a square tile; [width]/[height] win when both are given.
+  final double? size;
+  final double? width;
+  final double? height;
+  final double radius;
+  final double iconSize;
+  final Color? background;
+  final Color? foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.t;
+    return Container(
+      width: width ?? size,
+      height: height ?? size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: background ?? k.surf2,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: StrokeIcon(icon, size: iconSize, color: foreground ?? k.tx3),
+    );
   }
 }

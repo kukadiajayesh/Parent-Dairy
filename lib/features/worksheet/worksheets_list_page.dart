@@ -8,6 +8,7 @@ import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../data/app_state.dart';
@@ -193,7 +194,7 @@ class SubjectGroupHeader extends StatelessWidget {
       ),
     );
 
-    return InkWell(
+    return AppInkWell(
       borderRadius: BorderRadius.circular(8),
       // The design reaches Subject detail from the Performance tab, which this
       // build excludes; the group header is the natural replacement entry.

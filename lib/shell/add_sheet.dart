@@ -5,6 +5,7 @@ import '../core/config/feature_flags.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/widgets/app_icons.dart';
 import '../core/widgets/layout.dart';
+import '../core/widgets/pressable.dart';
 import '../core/widgets/sheets.dart';
 import '../core/widgets/stroke_icon.dart';
 
@@ -79,53 +80,58 @@ class _FromImageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return Material(
-      color: k.secFill,
-      borderRadius: BorderRadius.circular(20),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        hoverColor: k.secFillH,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: .18),
-                  borderRadius: BorderRadius.circular(14),
+    return PressDip(
+      child: Material(
+        color: k.secFill,
+        borderRadius: BorderRadius.circular(20),
+        clipBehavior: Clip.antiAlias,
+        child: AppInkWell(
+          onTap: onTap,
+          hoverColor: k.secFillH,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .18),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const StrokeIcon(
+                    AppIcons.upload,
+                    size: 22,
+                    color: Colors.white,
+                  ),
                 ),
-                child: const StrokeIcon(
-                  AppIcons.upload,
-                  size: 22,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'From Image',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'From Image',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Create a record from a shared image',
-                      style: TextStyle(fontSize: 12.5, color: Color(0xFFCADED9)),
-                    ),
-                  ],
+                      SizedBox(height: 2),
+                      Text(
+                        'Create a record from a shared image',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Color(0xFFCADED9),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

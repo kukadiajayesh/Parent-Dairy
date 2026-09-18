@@ -8,6 +8,7 @@ import '../../core/widgets/attachment_image.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../data/app_state.dart';
@@ -299,7 +300,7 @@ class _Overview extends StatelessWidget {
                     ),
                   ),
                 ),
-                InkWell(
+                AppInkWell(
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const WorksheetsListPage(),

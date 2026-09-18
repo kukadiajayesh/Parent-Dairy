@@ -46,16 +46,16 @@ void main() {
       await PrefsService.init();
 
       state = AppState(
-      auth: AuthRepository(
-        auth: MockFirebaseAuth(
-          signedIn: true,
-          mockUser: MockUser(
-            uid: 'parent-1',
-            email: 'jayesh@example.com',
-            displayName: 'Jayesh Patel',
+        auth: AuthRepository(
+          auth: MockFirebaseAuth(
+            signedIn: true,
+            mockUser: MockUser(
+              uid: 'parent-1',
+              email: 'jayesh@example.com',
+              displayName: 'Jayesh Patel',
+            ),
           ),
         ),
-      ),
         connectivity: ConnectivityService.fixed(),
       );
       await state.bootstrap();
@@ -131,8 +131,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('home renders the signed-in parent and their records',
-      (tester) async {
+  testWidgets('home renders the signed-in parent and their records', (
+    tester,
+  ) async {
     await pumpShell(tester);
 
     expect(find.textContaining('Jayesh'), findsWidgets);
@@ -159,15 +160,18 @@ void main() {
     expect(find.text('LATEST MARKS'), findsNothing);
   });
 
-  testWidgets('home screen offers quick actions for worksheet, classwork, exam and image', (tester) async {
-    await pumpShell(tester);
+  testWidgets(
+    'home screen offers quick actions for worksheet, classwork, exam and image',
+    (tester) async {
+      await pumpShell(tester);
 
-    expect(find.text('Worksheet'), findsWidgets);
-    expect(find.text('Classwork'), findsWidgets);
-    expect(find.text('Exam'), findsWidgets);
-    expect(find.text('Add from Image'), findsOneWidget);
-    expect(find.text('Marks'), findsNothing);
-  });
+      expect(find.text('Worksheet'), findsWidgets);
+      expect(find.text('Classwork'), findsWidgets);
+      expect(find.text('Exam'), findsWidgets);
+      expect(find.text('Add from Image'), findsOneWidget);
+      expect(find.text('Marks'), findsNothing);
+    },
+  );
 
   testWidgets('saving a worksheet puts it on the timeline', (tester) async {
     await pumpShell(tester);
@@ -177,12 +181,8 @@ void main() {
     expect(find.text('Add Worksheet'), findsOneWidget);
 
     // There is no free-text title anymore — the chosen chapter(s) (1–10)
-    // stand in for it. Chapters are picked as chips, confirmed with "Done".
-    await tester.tap(find.text('Select chapters'));
-    await tester.pumpAndSettle();
+    // stand in for it, toggled inline as chips like the subject row above.
     await tester.tap(find.text('Chapter 7'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Save Worksheet'));
@@ -192,7 +192,11 @@ void main() {
 
     await tester.tap(find.text('Timeline'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Chapter 7'), findsWidgets);
+    // The section heading stays hidden in chapter sort, but each card still
+    // carries its own chapter line so the item remains identifiable.
+    expect(find.text('CHAPTER 7'), findsNothing);
+    expect(find.text('Chapter 7'), findsWidgets);
+    expect(find.text('Worksheet'), findsWidgets);
   });
 
   testWidgets('saving a classwork puts it on the timeline', (tester) async {
@@ -202,12 +206,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Add Classwork'), findsOneWidget);
 
-    // Chapter selection replaces free-text title field
-    await tester.tap(find.text('Select chapters'));
-    await tester.pumpAndSettle();
+    // Chapter selection replaces the free-text title field, inline as chips.
     await tester.tap(find.text('Chapter 8'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Save Classwork'));
@@ -217,11 +217,14 @@ void main() {
 
     await tester.tap(find.text('Timeline'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Chapter 8'), findsWidgets);
+    expect(find.text('CHAPTER 8'), findsNothing);
+    expect(find.text('Chapter 8'), findsWidgets);
+    expect(find.text('Classwork'), findsWidgets);
   });
 
-  testWidgets('a new worksheet defaults to today, not a sample date',
-      (tester) async {
+  testWidgets('a new worksheet defaults to today, not a sample date', (
+    tester,
+  ) async {
     await pumpShell(tester);
 
     await tester.tap(find.text('Worksheet').first);
@@ -237,8 +240,9 @@ void main() {
     );
   });
 
-  testWidgets('timeline filter sheet includes exam but excludes marks',
-      (tester) async {
+  testWidgets('timeline filter sheet includes exam but excludes marks', (
+    tester,
+  ) async {
     await pumpShell(tester);
 
     await tester.tap(find.text('Timeline'));
@@ -256,34 +260,37 @@ void main() {
     expect(find.text('Marks'), findsNothing);
   });
 
-  testWidgets('timeline filter sheet allows subject filter and chapter sorting',
-      (tester) async {
-    await pumpShell(tester);
+  testWidgets(
+    'timeline filter sheet allows subject filter and chapter sorting',
+    (tester) async {
+      await pumpShell(tester);
 
-    await tester.tap(find.text('Timeline'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Timeline'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Filter'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Filter'));
+      await tester.pumpAndSettle();
 
-    // Select subject "Mathematics"
-    await tester.tap(find.text('Mathematics').last);
-    await tester.pumpAndSettle();
+      // Select subject "Mathematics"
+      await tester.tap(find.text('Mathematics').last);
+      await tester.pumpAndSettle();
 
-    // Select sort by "Chapter"
-    await tester.tap(find.text('Chapter').last);
-    await tester.pumpAndSettle();
+      // Select sort by "Chapter"
+      await tester.tap(find.text('Chapter').last);
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Apply'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
 
-    // Check that state filter has been updated
-    expect(state.filter.subject, 'Mathematics');
-    expect(state.filter.sortBy, 'Chapter');
-  });
+      // Check that state filter has been updated
+      expect(state.filter.subject, 'Mathematics');
+      expect(state.filter.sortBy, 'Chapter');
+    },
+  );
 
-  testWidgets('more screen shows the Google account and hides removed rows',
-      (tester) async {
+  testWidgets('more screen shows the Google account and hides removed rows', (
+    tester,
+  ) async {
     await pumpShell(tester);
 
     await tester.tap(find.text('More'));
@@ -305,8 +312,9 @@ void main() {
     expect(find.text('Help & support'), findsNothing);
   });
 
-  testWidgets('worksheet detail marks completed and back again',
-      (tester) async {
+  testWidgets('worksheet detail marks completed and back again', (
+    tester,
+  ) async {
     await pumpShell(tester);
 
     await tester.tap(find.text('Fractions Practice').first);
@@ -331,8 +339,9 @@ void main() {
     expect(find.text('Mark completed'), findsOneWidget);
   });
 
-  testWidgets('deleting a record removes it and offers an undo',
-      (tester) async {
+  testWidgets('deleting a record removes it and offers an undo', (
+    tester,
+  ) async {
     await pumpShell(tester);
 
     await tester.tap(find.text('Fractions Practice').first);
@@ -350,8 +359,9 @@ void main() {
     expect(find.text('Undo'), findsOneWidget);
   });
 
-  testWidgets('browse surfaces show the attachment, not a placeholder',
-      (tester) async {
+  testWidgets('browse surfaces show the attachment, not a placeholder', (
+    tester,
+  ) async {
     // Regression: the detail screens, forms, picker and viewer were wired to
     // render real attachments, but the timeline card and the list/subject
     // thumbnails still built a bare ImageSlot. Every browsing surface showed a

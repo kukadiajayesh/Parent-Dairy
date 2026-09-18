@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_tokens.dart';
 import '../theme/subject_hue.dart';
+import 'pressable.dart';
 
 /// Pill chip used for subject pickers, list filters and state selectors.
 /// Selected chips take a tinted fill with a matching border; unselected chips
@@ -35,20 +36,24 @@ class AppChip extends StatelessWidget {
     final border = selected ? (selectedBorder ?? k.priFill) : k.bd3;
     final ink = selected ? (selectedForeground ?? k.surf) : k.tx3;
 
-    return Material(
-      color: bg,
-      shape: StadiumBorder(side: BorderSide(color: border, width: 1.5)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: padding,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w600,
-              color: ink,
+    return PressDip(
+      child: Material(
+        color: bg,
+        shape: StadiumBorder(side: BorderSide(color: border, width: 1.5)),
+        clipBehavior: Clip.antiAlias,
+        child: AppInkWell(
+          onTap: onTap,
+          // A chip picks a value, and both platforms buzz for that natively.
+          haptic: true,
+          child: Padding(
+            padding: padding,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w600,
+                color: ink,
+              ),
             ),
           ),
         ),
@@ -273,6 +278,39 @@ class SubjectBadge extends StatelessWidget {
           color: hue.ink(k),
         ),
       ),
+    );
+  }
+}
+
+/// Multi-select chip row: every option is on screen and toggles in place, the
+/// same interaction the subject picker uses. Chosen over a "Select …" field
+/// that opens a sheet — with a short, fixed option list (chapters) the sheet
+/// is a round trip for no extra information.
+class MultiSelectChips extends StatelessWidget {
+  const MultiSelectChips({
+    super.key,
+    required this.options,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final List<String> options;
+  final List<String> selected;
+  final ValueChanged<String> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final option in options)
+          AppChip(
+            label: option,
+            selected: selected.contains(option),
+            onTap: () => onToggle(option),
+          ),
+      ],
     );
   }
 }
