@@ -75,6 +75,10 @@ void main() {
               : MockFirebaseAuth(),
         ),
         connectivity: ConnectivityService.fixed(),
+        // The fixture is dated in the design's sample week; pinning the clock
+        // keeps the default "This week" timeline populated and the goldens
+        // stable from one day to the next.
+        now: () => DateTime(2026, 8, 23),
       );
       if (!signedIn) return;
 

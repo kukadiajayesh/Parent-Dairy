@@ -671,6 +671,10 @@ class AppState extends ChangeNotifier {
   List<DiaryRecord> get recordsByDateDesc =>
       _records.toList()..sort((a, b) => b.date.compareTo(a.date));
 
+  /// The clock the app runs on: injectable for tests, wall clock otherwise.
+  /// Screens that compare against "today" read this, never a pinned date.
+  DateTime get now => _now();
+
   List<DiaryRecord> get pendingWorksheets =>
       worksheets.where((w) => w.status == WorksheetStatus.pending).toList()
         ..sort((a, b) => (a.dueDate ?? a.date).compareTo(b.dueDate ?? b.date));

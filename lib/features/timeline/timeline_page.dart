@@ -141,7 +141,10 @@ class TimelinePage extends StatelessWidget {
 
   List<DiaryRecord> _applyFilter(AppState state) {
     final filter = state.filter;
-    final now = DateTime(2026, 8, 23); // the design's "today"
+    // The real clock, not the design's sample "today": the default filter is
+    // "This week", and a pinned date hid every record a parent saved after
+    // the week the prototype was drawn in.
+    final now = state.now;
 
     return state.recordsByDateDesc.where((record) {
       if (filter.subject != 'All' && record.subject != filter.subject) {
@@ -169,7 +172,7 @@ class TimelinePage extends StatelessWidget {
   /// apply, since a report card spans every subject.
   List<ExamResult> _filteredResults(AppState state) {
     final filter = state.filter;
-    final now = DateTime(2026, 8, 23); // the design's "today"
+    final now = state.now;
     return state.resultsByDateDesc.where((r) {
       return switch (filter.date) {
         'Today' => AppDate.sameDay(r.date, now),

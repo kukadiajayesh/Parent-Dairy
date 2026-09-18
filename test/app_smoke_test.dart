@@ -615,6 +615,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // The timeline filters against the real clock, and this fixture is dated
+    // in the design's sample week.
+    state.setFilter(const TimelineFilter(date: 'All'));
     await tester.tap(find.text('Timeline'));
     await tester.pumpAndSettle();
 
