@@ -89,14 +89,17 @@ class ImageSlot extends StatelessWidget {
     // A failed/evicted load (corrupt file, 404, network drop) falls back to
     // the same dashed placeholder instead of rendering blank.
     final content = image != null
-        ? Image(
+        ? SlotImage(
             image: image!,
-            fit: BoxFit.cover,
             errorBuilder: (context, error, stack) => buildPlaceholder(),
           )
         : buildPlaceholder();
 
-    Widget slot = ClipRRect(borderRadius: shape, child: content);
+    // Its own layer: a thumbnail repaints only when it changes, not when the
+    // card around it presses, shimmers or re-lays out (prompt 04 §1.6).
+    Widget slot = RepaintBoundary(
+      child: ClipRRect(borderRadius: shape, child: content),
+    );
     if (onTap != null) {
       // `overlay`: an attached photo fills this slot opaquely, and ink painted
       // on the Material underneath it would never be seen.
@@ -112,6 +115,70 @@ class ImageSlot extends StatelessWidget {
       slot = SizedBox(width: width, height: height, child: slot);
     }
     return slot;
+  }
+}
+
+/// Draws [image] to fill its box, decoded no larger than that box.
+///
+/// Worksheet photos are stored at up to 2000px on the long edge and drawn
+/// into slots of 40–280dp. Without a target size the engine decodes the
+/// whole file — roughly 16MB of ARGB per photo, all of it kept in the image
+/// cache — so the provider is wrapped in [ResizeImage] sized to the slot's
+/// physical pixels. `fit` keeps the aspect ratio, so a landscape page in a
+/// square slot is not squashed; `cover` then crops it.
+class SlotImage extends StatelessWidget {
+  const SlotImage({
+    super.key,
+    required this.image,
+    this.fit = BoxFit.cover,
+    this.filterQuality = FilterQuality.medium,
+    this.errorBuilder,
+  });
+
+  final ImageProvider image;
+  final BoxFit fit;
+  final FilterQuality filterQuality;
+  final ImageErrorWidgetBuilder? errorBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? (constraints.maxWidth * dpr).ceil()
+            : null;
+        final height = constraints.maxHeight.isFinite
+            ? (constraints.maxHeight * dpr).ceil()
+            : null;
+        // `cover` scales to the axis that needs more, so a square bound of
+        // the longer side would leave a portrait photo in a wide slot
+        // upscaled. The bound grows with the slot's aspect ratio (capped at
+        // 2×) so the crop is never softer than the slot; for the near-square
+        // slots most thumbnails use this is within a few percent.
+        int? bound;
+        if (width != null && height != null) {
+          final long = width > height ? width : height;
+          final short = width > height ? height : width;
+          final ratio = short == 0 ? 1.0 : (long / short).clamp(1.0, 2.0);
+          bound = (long * ratio).ceil();
+        }
+        final provider = bound == null && width == null && height == null
+            ? image
+            : ResizeImage(
+                image,
+                width: bound ?? width,
+                height: bound ?? height,
+                policy: ResizeImagePolicy.fit,
+              );
+        return Image(
+          image: provider,
+          fit: fit,
+          filterQuality: filterQuality,
+          errorBuilder: errorBuilder,
+        );
+      },
+    );
   }
 }
 

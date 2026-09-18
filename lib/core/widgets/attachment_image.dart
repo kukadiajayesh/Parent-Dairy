@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
@@ -23,11 +24,8 @@ ImageProvider? attachmentImage(Attachment? attachment) {
   if (attachment == null || attachment.isPdf) return null;
 
   final localPath = attachment.localPath;
-  if (localPath != null && localPath.isNotEmpty) {
-    final file = File(localPath);
-    // Synchronous on purpose — this runs in build, and an existsSync on a path
-    // the app just wrote is a stat call, not I/O worth an await.
-    if (file.existsSync()) return FileImage(file);
+  if (localPath != null && localPath.isNotEmpty && _fileExists(localPath)) {
+    return FileImage(File(localPath));
   }
 
   final url = attachment.downloadUrl;
@@ -39,9 +37,27 @@ ImageProvider? attachmentImage(Attachment? attachment) {
 /// The same for a file the parent has picked but not yet saved.
 ImageProvider? fileImage(String? path) {
   if (path == null || path.isEmpty) return null;
-  final file = File(path);
-  return file.existsSync() ? FileImage(file) : null;
+  return _fileExists(path) ? FileImage(File(path)) : null;
 }
+
+/// Paths this session has already seen on disk.
+///
+/// The check runs in `build`, once per thumbnail per frame, and each one is
+/// a `stat` syscall. A file the app wrote does not vanish mid-session, so a
+/// positive answer is remembered; a negative one is not, because the same
+/// path can appear a moment later when a download finishes. If a cached
+/// file is deleted underneath us, `Image.errorBuilder` shows the placeholder.
+final Set<String> _knownFiles = <String>{};
+
+bool _fileExists(String path) {
+  if (_knownFiles.contains(path)) return true;
+  if (!File(path).existsSync()) return false;
+  _knownFiles.add(path);
+  return true;
+}
+
+@visibleForTesting
+void clearKnownFilesCache() => _knownFiles.clear();
 
 /// A thumbnail for [attachment] that always shows something identifiable —
 /// a real image preview, or a clearly-labelled PDF page thumbnail — instead of the
@@ -237,11 +253,9 @@ class _PdfThumbState extends State<_PdfThumb> {
       return Stack(
         fit: StackFit.expand,
         children: [
-          Image.memory(
-            bytes,
-            fit: BoxFit.cover,
-            filterQuality: FilterQuality.medium,
-          ),
+          // Decoded at the slot's size, like every other thumbnail: the
+          // rendered page is far larger than any slot that shows it.
+          SlotImage(image: MemoryImage(bytes)),
           Positioned(
             left: 6,
             bottom: 6,
