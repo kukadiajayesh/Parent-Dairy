@@ -62,12 +62,24 @@ service cloud.firestore {
           allow delete: if false;
         }
 
+        match /results/{resultId} {
+          allow read: if isOwner(uid);
+
+          allow create, update: if isOwner(uid)
+                                && isValidResult()
+                                && request.resource.data.childId == childId;
+
+          // Soft delete only, like records: a report card is a document of
+          // record and a mis-tap must never destroy one.
+          allow delete: if false;
+        }
+
         function isValidRecord() {
           let data = request.resource.data;
           return isNonEmptyString(data.title, 200)
                  && isNonEmptyString(data.subject, 60)
                  && isNonEmptyString(data.academicYearId, 40)
-                 && data.type in ['worksheet', 'classwork']
+                 && data.type in ['worksheet', 'classwork', 'exam']
                  && data.status in ['pending', 'completed']
                  && data.date is timestamp
                  && data.isDeleted is bool
@@ -76,7 +88,32 @@ service cloud.firestore {
                  // record near Firestore's 1 MiB limit.
                  && data.attachments.size() <= 50
                  && data.notes is string
-                 && data.notes.size() <= 5000;
+                 && data.notes.size() <= 5000
+                 && (data.type != 'exam' || isValidExam(data));
+        }
+
+        // Mirrors RecordRepository._validate for exams: the type and the
+        // timetable are what make an exam record renderable.
+        function isValidExam(data) {
+          return isNonEmptyString(data.examType, 60)
+                 && data.examTimetable is map;
+        }
+
+        // Mirrors ResultRepository._validate. Rows are validated as a list
+        // shape only — per-row marks are checked client-side; the bound keeps
+        // a report card well under the document size limit.
+        function isValidResult() {
+          let data = request.resource.data;
+          return isNonEmptyString(data.examLabel, 80)
+                 && isNonEmptyString(data.academicYearId, 40)
+                 && data.date is timestamp
+                 && data.scores is list
+                 && data.scores.size() > 0
+                 && data.scores.size() <= 30
+                 && data.isDeleted is bool
+                 && data.source in ['manual', 'scanned', 'imported']
+                 && data.teacherRemarks is string
+                 && data.teacherRemarks.size() <= 2000;
         }
       }
     }

@@ -11,8 +11,11 @@ import '../../core/widgets/layout.dart';
 import '../../core/widgets/pressable.dart';
 import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../data/analytics/subject_insights.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../performance/charts.dart';
+import '../performance/insight_widgets.dart';
 import '../worksheet/worksheets_list_page.dart';
 
 /// Subject detail with Overview / Worksheets / Classwork tabs.
@@ -55,6 +58,11 @@ class _SubjectPageState extends State<SubjectPage> {
     final pending = worksheets
         .where((w) => w.status == WorksheetStatus.pending)
         .length;
+    final exams = state.records
+        .where((r) => r.isExam && r.subject == subject.name)
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final insight = kShowExamMarks ? state.insightFor(subject.name) : null;
 
     return Scaffold(
       backgroundColor: k.bg,
@@ -74,6 +82,7 @@ class _SubjectPageState extends State<SubjectPage> {
                     subject: subject,
                     worksheets: worksheets.length,
                     classwork: classwork.length,
+                    insight: insight,
                   ),
                   const SizedBox(height: 18),
                   SingleChildScrollView(
@@ -102,12 +111,19 @@ class _SubjectPageState extends State<SubjectPage> {
                       latest: [...worksheets, ...classwork]
                         ..sort((a, b) => b.date.compareTo(a.date)),
                       pending: pending,
+                      insight: insight,
                     )
+                  else if (_tab == 'Marks')
+                    _MarksTab(subject: subject, insight: insight)
                   else
                     _RecordList(
                       label: _tab,
                       subjectName: subject.name,
-                      records: _tab == 'Worksheets' ? worksheets : classwork,
+                      records: switch (_tab) {
+                        'Worksheets' => worksheets,
+                        'Exams' => exams,
+                        _ => classwork,
+                      },
                     ),
                 ],
               ),
@@ -124,18 +140,28 @@ class _SubjectHeaderCard extends StatelessWidget {
     required this.subject,
     required this.worksheets,
     required this.classwork,
+    this.insight,
   });
 
   final Subject subject;
   final int worksheets;
   final int classwork;
+  final SubjectInsight? insight;
 
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    // The design shows an average-marks figure here; without marks the honest
-    // headline is how much of this subject the diary actually holds.
+    // The design shows an average-marks figure here. With marks recorded
+    // that is what leads; without any, the honest headline is how much of
+    // this subject the diary actually holds.
+    final average = insight?.averagePercent;
     final total = worksheets + classwork;
+    final headline = average == null ? '$total' : '${average.round()}%';
+    final caption = average == null
+        ? '$worksheets worksheet${worksheets == 1 ? '' : 's'} · '
+              '$classwork classwork'
+        : '${confidenceLabel(insight!)} · '
+              '$worksheets worksheet${worksheets == 1 ? '' : 's'}';
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -168,7 +194,7 @@ class _SubjectHeaderCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$total',
+                  headline,
                   style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w800,
@@ -179,8 +205,9 @@ class _SubjectHeaderCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$worksheets worksheet${worksheets == 1 ? '' : 's'} · '
-                  '$classwork classwork',
+                  caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
@@ -190,6 +217,10 @@ class _SubjectHeaderCard extends StatelessWidget {
               ],
             ),
           ),
+          if (insight != null && insight!.band != InsightBand.unknown) ...[
+            const SizedBox(width: 10),
+            InsightBandPill(insight!.band),
+          ],
         ],
       ),
     );
@@ -201,11 +232,13 @@ class _Overview extends StatelessWidget {
     required this.subject,
     required this.latest,
     required this.pending,
+    this.insight,
   });
 
   final Subject subject;
   final List<DiaryRecord> latest;
   final int pending;
+  final SubjectInsight? insight;
 
   @override
   Widget build(BuildContext context) {
@@ -327,6 +360,185 @@ class _Overview extends StatelessWidget {
           ),
         ],
         // "Latest marks" and the trend chart sit here behind showExamMarks.
+        if (insight != null && insight!.sampleCount > 0) ...[
+          const SizedBox(height: 22),
+          const SectionLabel('Latest marks'),
+          const SizedBox(height: 10),
+          _InsightSummary(subject: subject, insight: insight!),
+        ],
+      ],
+    );
+  }
+}
+
+/// Band, average, latest and the reasons — the same verdict the Performance
+/// tab shows, in the subject's own colour.
+class _InsightSummary extends StatelessWidget {
+  const _InsightSummary({required this.subject, required this.insight});
+
+  final Subject subject;
+  final SubjectInsight insight;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.t;
+    final state = AppScope.of(context);
+    final points = <TrendPoint>[
+      for (final r in state.insightResults.toList()
+        ..sort((a, b) => a.date.compareTo(b.date)))
+        for (final s in r.scores)
+          if (s.subject == subject.name && !s.absent && s.percent != null)
+            (label: r.examLabel, value: s.percent!),
+    ];
+
+    return AppCard(
+      radius: 18,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                percentLabel(insight.averagePercent),
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                  height: 1,
+                  color: subject.hue.ink(k),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'average · latest ${percentLabel(insight.latestPercent)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, color: k.tx4),
+                ),
+              ),
+              InsightBandPill(insight.band),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TrendLineChart(points: points, color: subject.hue.dot(k)),
+          if (insight.reasons.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final reason in insight.reasons.take(2))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '· $reason',
+                  style: TextStyle(fontSize: 13, height: 1.4, color: k.tx2),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Every score this subject has, newest first, above the trend line.
+class _MarksTab extends StatelessWidget {
+  const _MarksTab({required this.subject, this.insight});
+
+  final Subject subject;
+  final SubjectInsight? insight;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.t;
+    final state = AppScope.of(context);
+    final root = Navigator.of(context, rootNavigator: true);
+    final rows = <(ExamResult, SubjectScore)>[
+      for (final r in state.insightResults)
+        for (final s in r.scores)
+          if (s.subject == subject.name) (r, s),
+    ]..sort((a, b) => b.$1.date.compareTo(a.$1.date));
+
+    if (rows.isEmpty) {
+      return EmptyListNotice(
+        title: 'No marks yet',
+        description: 'Marks entered for ${subject.name} appear here.',
+      );
+    }
+
+    final average = insight?.averagePercent;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (insight != null && insight!.sampleCount > 0) ...[
+          _InsightSummary(subject: subject, insight: insight!),
+          const SizedBox(height: 18),
+        ],
+        SectionLabel('Marks · ${subject.name}'),
+        const SizedBox(height: 10),
+        for (final (result, score) in rows) ...[
+          AppCard(
+            radius: 16,
+            onTap: () =>
+                root.pushNamed(Routes.resultDetail, arguments: result.id),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        result.examLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        [
+                          AppDate.short(result.date),
+                          if (score.hasMarks)
+                            '${score.marks!.round()} / ${score.maxMarks!.round()}',
+                          if (score.hasGrade) 'Grade ${score.grade}',
+                          if (score.absent) 'Absent',
+                        ].join(' · '),
+                        style: TextStyle(fontSize: 12, color: k.tx4),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      score.absent ? 'Absent' : percentLabel(score.percent),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                        color: score.percent == null ? k.tx4 : k.tx,
+                      ),
+                    ),
+                    if (score.percent != null && average != null && rows.length > 1)
+                      Text(
+                        deltaLabel(score.percent! - average),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: score.percent! < average ? k.err : k.secInk2,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
       ],
     );
   }
@@ -364,16 +576,20 @@ class _RecordList extends StatelessWidget {
           AppCard(
             radius: 16,
             onTap: () => root.pushNamed(
-              record.isWorksheet
-                  ? Routes.worksheetDetail
-                  : Routes.classworkDetail,
+              switch (record.type) {
+                RecordType.worksheet => Routes.worksheetDetail,
+                RecordType.classwork => Routes.classworkDetail,
+                RecordType.exam => Routes.examDetail,
+              },
               arguments: record.id,
             ),
             child: Row(
               children: [
                 attachmentThumb(
                   context,
-                  record.attachments.firstOrNull ?? record.answerKey,
+                  record.examTimetable ??
+                      record.attachments.firstOrNull ??
+                      record.answerKey,
                   radius: 12,
                   width: 52,
                   height: 52,
@@ -385,7 +601,7 @@ class _RecordList extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        record.title,
+                        record.isExam ? record.examType : record.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -396,7 +612,11 @@ class _RecordList extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         '${AppDate.short(record.date)} · '
-                        '${record.isWorksheet ? AppFormat.fileCount(record.fileCount) : AppFormat.photoCount(record.attachments.length)}',
+                        '${switch (record.type) {
+                          RecordType.worksheet => AppFormat.fileCount(record.fileCount),
+                          RecordType.classwork => AppFormat.photoCount(record.attachments.length),
+                          RecordType.exam => AppFormat.fileCount(record.allFiles.length),
+                        }}',
                         style: TextStyle(fontSize: 12, color: k.tx4),
                       ),
                     ],
@@ -417,9 +637,9 @@ class _RecordList extends StatelessWidget {
                   )
                 else
                   StatusPill(
-                    label: 'Photos',
-                    background: k.surf2,
-                    foreground: k.tx3,
+                    label: record.isExam ? 'Exam' : 'Photos',
+                    background: record.isExam ? k.warnC : k.surf2,
+                    foreground: record.isExam ? k.warnInk : k.tx3,
                   ),
               ],
             ),

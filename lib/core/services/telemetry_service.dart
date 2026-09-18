@@ -88,6 +88,18 @@ abstract final class Telemetry {
 
   static Future<void> worksheetCompleted() => _event('worksheet_completed');
 
+  /// Counts only: how many subject rows and how the card got here. Never the
+  /// marks, the subjects or the exam name.
+  static Future<void> resultCreated({
+    required int subjectCount,
+    required String source,
+  }) => _event('result_created', {
+    'subject_count': subjectCount,
+    'source': source,
+  });
+
+  static Future<void> resultDeleted() => _event('result_deleted');
+
   static Future<void> imageSharedToApp(int count) =>
       _event('image_shared_to_app', {'image_count': count});
 

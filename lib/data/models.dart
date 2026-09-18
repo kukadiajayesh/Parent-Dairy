@@ -1,3 +1,4 @@
+import '../core/config/grade_scale.dart';
 import '../core/theme/subject_hue.dart';
 
 enum RecordType {
@@ -120,6 +121,7 @@ class Child {
     this.rollNumber,
     this.dateOfBirth,
     this.notes = '',
+    this.gradeScaleId = GradeScale.defaultId,
   });
 
   final String id;
@@ -142,8 +144,14 @@ class Child {
   final DateTime? dateOfBirth;
   final String notes;
 
+  /// Which [GradeScale] turns this child's report-card grades into percents.
+  /// Per child, because siblings can attend schools on different boards.
+  final String gradeScaleId;
+
   String get meta => '$grade $section · $school';
   String get shortMeta => '$grade · $year';
+
+  GradeScale get gradeScale => GradeScale.byId(gradeScaleId);
 
   Child copyWith({
     String? id,
@@ -158,6 +166,7 @@ class Child {
     String? rollNumber,
     DateTime? dateOfBirth,
     String? notes,
+    String? gradeScaleId,
   }) => Child(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -171,6 +180,7 @@ class Child {
     rollNumber: rollNumber ?? this.rollNumber,
     dateOfBirth: dateOfBirth ?? this.dateOfBirth,
     notes: notes ?? this.notes,
+    gradeScaleId: gradeScaleId ?? this.gradeScaleId,
   );
 
   /// "Aarav Patel" -> "AP", "Diya" -> "DI".
@@ -205,6 +215,26 @@ class AcademicYear {
   final bool active;
 
   String get meta => '$span · $records records';
+
+  /// The year's span, derived from the label rather than the display string:
+  /// `2026–27` runs 1 Apr 2026 – 31 Mar 2027, the Indian school calendar.
+  /// Null when the label carries no four-digit year.
+  ({DateTime start, DateTime end})? get dateSpan => spanForLabel(label);
+
+  /// True when [date] falls inside this year's April–March span.
+  bool contains(DateTime date) {
+    final span = dateSpan;
+    if (span == null) return false;
+    return !date.isBefore(span.start) && date.isBefore(span.end);
+  }
+
+  static ({DateTime start, DateTime end})? spanForLabel(String label) {
+    final start = int.tryParse(
+      RegExp(r'\d{4}').firstMatch(label)?.group(0) ?? '',
+    );
+    if (start == null) return null;
+    return (start: DateTime(start, 4, 1), end: DateTime(start + 1, 4, 1));
+  }
 
   AcademicYear copyWith({
     String? id,
@@ -470,4 +500,242 @@ class DiaryRecord {
     isDeleted: isDeleted ?? this.isDeleted,
     deletedAt: deletedAt ?? this.deletedAt,
   );
+}
+
+// ── Exam results ──────────────────────────────────────────────────────────
+
+/// How a result reached the diary. Manual entry is the only source this
+/// build writes; `scanned` and `imported` are reserved for the report-card
+/// OCR prompt so those documents already parse when it lands.
+enum ResultSource {
+  manual('manual'),
+  scanned('scanned'),
+  imported('imported');
+
+  const ResultSource(this.wire);
+  final String wire;
+
+  static ResultSource fromWire(String? value) => switch (value) {
+    'scanned' => ResultSource.scanned,
+    'imported' => ResultSource.imported,
+    _ => ResultSource.manual,
+  };
+
+  String get label => switch (this) {
+    ResultSource.manual => 'Entered by you',
+    ResultSource.scanned => 'Scanned',
+    ResultSource.imported => 'Imported',
+  };
+}
+
+/// One subject row on one report card.
+class SubjectScore {
+  const SubjectScore({
+    required this.subject,
+    this.marks,
+    this.maxMarks,
+    this.grade,
+    this.classRank,
+    this.remarks = '',
+    this.absent = false,
+    this.gradeScaleId = GradeScale.defaultId,
+  });
+
+  /// Subject *name* — normally one of the child's subjects, but free text is
+  /// allowed so a report card can be copied faithfully even when the school
+  /// lists a subject the diary does not know yet.
+  final String subject;
+
+  /// Null when the school reports grades only.
+  final double? marks;
+  final double? maxMarks;
+
+  /// 'A1', 'B+', 'Distinction', … — kept verbatim.
+  final String? grade;
+  final int? classRank;
+  final String remarks;
+
+  /// An absent row is excluded from every average, never scored as zero.
+  final bool absent;
+
+  /// The scale that resolves [grade] when there are no marks. Carried on the
+  /// row so [percent] can stay a plain getter; the mapper writes it once per
+  /// result and stamps it back onto every row on read.
+  final String gradeScaleId;
+
+  bool get hasMarks => marks != null && maxMarks != null && maxMarks! > 0;
+  bool get hasGrade => grade != null && grade!.trim().isNotEmpty;
+
+  /// 0–100, or null when neither marks nor a mappable grade is present.
+  /// Absent rows never have a percent.
+  double? get percent {
+    if (absent) return null;
+    if (hasMarks) return (marks! / maxMarks!) * 100;
+    return GradeScale.byId(gradeScaleId).percentFor(grade);
+  }
+
+  /// True when [percent] came from a grade band's midpoint rather than from
+  /// marks — the UI says "approximate" instead of pretending an A1 is 95.5%.
+  bool get isDerivedPercent => !absent && !hasMarks && percent != null;
+
+  SubjectScore copyWith({
+    String? subject,
+    double? marks,
+    double? maxMarks,
+    String? grade,
+    int? classRank,
+    String? remarks,
+    bool? absent,
+    String? gradeScaleId,
+    bool clearMarks = false,
+    bool clearMaxMarks = false,
+    bool clearGrade = false,
+    bool clearClassRank = false,
+  }) => SubjectScore(
+    subject: subject ?? this.subject,
+    marks: clearMarks ? null : (marks ?? this.marks),
+    maxMarks: clearMaxMarks ? null : (maxMarks ?? this.maxMarks),
+    grade: clearGrade ? null : (grade ?? this.grade),
+    classRank: clearClassRank ? null : (classRank ?? this.classRank),
+    remarks: remarks ?? this.remarks,
+    absent: absent ?? this.absent,
+    gradeScaleId: gradeScaleId ?? this.gradeScaleId,
+  );
+}
+
+/// A whole exam result — one report card, one unit test, one term.
+class ExamResult {
+  const ExamResult({
+    required this.id,
+    required this.childId,
+    required this.academicYearId,
+    required this.examLabel,
+    required this.date,
+    this.examRecordId,
+    this.scores = const [],
+    this.attendancePercent,
+    this.teacherRemarks = '',
+    this.source = ResultSource.manual,
+    this.extractionConfidence = 1,
+    this.needsReview = false,
+    this.gradeScaleId = GradeScale.defaultId,
+    this.createdAt,
+    this.updatedAt,
+    this.isDeleted = false,
+    this.deletedAt,
+  });
+
+  final String id;
+  final String childId;
+
+  /// The year *label* (`2026–27`), the same convention as [DiaryRecord].
+  final String academicYearId;
+
+  /// 'Unit Test 1', 'Term 1', 'Half Yearly', …
+  final String examLabel;
+  final DateTime date;
+
+  /// The [DiaryRecord] of type exam this result belongs to, if the parent
+  /// linked one.
+  final String? examRecordId;
+  final List<SubjectScore> scores;
+  final double? attendancePercent;
+  final String teacherRemarks;
+  final ResultSource source;
+
+  /// 1.0 for manual entry; a scan reports what the model was sure of.
+  final double extractionConfidence;
+
+  /// True until a parent confirms a scanned card.
+  final bool needsReview;
+
+  /// The [GradeScale] in force when the result was saved. Snapshotted here
+  /// rather than read live from the child, so changing the scale later does
+  /// not silently rewrite last year's averages.
+  final String gradeScaleId;
+
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final bool isDeleted;
+  final DateTime? deletedAt;
+
+  /// Rows that actually carry a number — absent rows and blank rows excluded.
+  Iterable<SubjectScore> get scoredRows =>
+      scores.where((s) => !s.absent && s.percent != null);
+
+  int get gradedSubjectCount => scoredRows.length;
+
+  /// Marks-weighted overall percent, ignoring absent rows.
+  ///
+  /// Each row contributes `percent × weight`, where the weight is its own
+  /// max marks (a 100-mark paper counts more than a 20-mark quiz) and a
+  /// grade-only row counts as a 100-mark paper. Raw marks are never summed
+  /// across different maxima, so 72/80 and 90/100 never become "162".
+  double? get overallPercent {
+    var weighted = 0.0;
+    var weights = 0.0;
+    for (final row in scoredRows) {
+      final weight = row.hasMarks ? row.maxMarks! : 100.0;
+      weighted += row.percent! * weight;
+      weights += weight;
+    }
+    if (weights == 0) return null;
+    return weighted / weights;
+  }
+
+  SubjectScore? scoreFor(String subject) =>
+      scores.where((s) => s.subject == subject).firstOrNull;
+
+  /// Re-stamps [gradeScaleId] onto every row as well, so a result and its
+  /// scores never disagree about which scale resolves a grade.
+  ExamResult copyWith({
+    String? id,
+    String? childId,
+    String? academicYearId,
+    String? examLabel,
+    DateTime? date,
+    String? examRecordId,
+    List<SubjectScore>? scores,
+    double? attendancePercent,
+    String? teacherRemarks,
+    ResultSource? source,
+    double? extractionConfidence,
+    bool? needsReview,
+    String? gradeScaleId,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    bool? isDeleted,
+    DateTime? deletedAt,
+    bool clearExamRecordId = false,
+    bool clearAttendance = false,
+  }) {
+    final scale = gradeScaleId ?? this.gradeScaleId;
+    final rows = scores ?? this.scores;
+    return ExamResult(
+      id: id ?? this.id,
+      childId: childId ?? this.childId,
+      academicYearId: academicYearId ?? this.academicYearId,
+      examLabel: examLabel ?? this.examLabel,
+      date: date ?? this.date,
+      examRecordId: clearExamRecordId
+          ? null
+          : (examRecordId ?? this.examRecordId),
+      scores: [
+        for (final row in rows)
+          row.gradeScaleId == scale ? row : row.copyWith(gradeScaleId: scale),
+      ],
+      attendancePercent: clearAttendance
+          ? null
+          : (attendancePercent ?? this.attendancePercent),
+      teacherRemarks: teacherRemarks ?? this.teacherRemarks,
+      source: source ?? this.source,
+      extractionConfidence: extractionConfidence ?? this.extractionConfidence,
+      needsReview: needsReview ?? this.needsReview,
+      gradeScaleId: scale,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
+  }
 }

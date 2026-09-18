@@ -16,6 +16,7 @@ import '../../data/app_state.dart';
 import '../../data/models.dart';
 import '../../shell/shell_scope.dart';
 import '../children/child_switcher_sheet.dart';
+import '../performance/insight_widgets.dart';
 import '../search/search_page.dart';
 import '../settings/year_switcher_sheet.dart';
 import '../worksheet/worksheets_list_page.dart';
@@ -134,6 +135,19 @@ class HomePage extends StatelessWidget {
                     _PendingBanner(count: pending.length),
                     const SizedBox(height: 12),
                     _PendingCarousel(records: pending),
+                  ],
+                  if (kShowExamMarks) ...[
+                    const SizedBox(height: 22),
+                    SectionLabel(
+                      'Latest marks',
+                      trailing: SectionAction(
+                        label: 'View all',
+                        onTap: () =>
+                            ShellScope.maybeOf(context)?.goToTab('performance'),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const _LatestMarks(),
                   ],
                   const SizedBox(height: 22),
                   SectionLabel(
@@ -308,10 +322,22 @@ class _QuickActions extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            const Expanded(child: SizedBox.shrink()),
+            // The Marks tile lives here in the design, behind showExamMarks.
+            if (kShowExamMarks)
+              Expanded(
+                child: _QuickActionTile(
+                  label: 'Marks',
+                  tint: k.subHinC,
+                  icon: AppIcons.navPerformance,
+                  iconColor: k.subHinInk,
+                  hoverBorder: k.subHinInk,
+                  onTap: () => root.pushNamed(Routes.addResult),
+                ),
+              )
+            else
+              const Expanded(child: SizedBox.shrink()),
           ],
         ),
-        // The Marks tile lives here in the design, behind showExamMarks.
         const SizedBox(height: 12),
         _AddFromImageBanner(onTap: () => root.pushNamed(Routes.shareImage)),
       ],
@@ -676,6 +702,105 @@ class _RecentRow extends StatelessWidget {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Latest marks": the newest report card, its overall percent, and up to
+/// two subjects that need attention. Tapping opens the result.
+class _LatestMarks extends StatelessWidget {
+  const _LatestMarks();
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.t;
+    final state = AppScope.of(context);
+    final latest = state.latestResult;
+    final root = Navigator.of(context, rootNavigator: true);
+
+    if (latest == null) {
+      if (state.isLoadingResults) {
+        return const Skeletons(child: SkeletonBox(height: 84, radius: 18));
+      }
+      return const EmptyListNotice(
+        title: 'No marks yet',
+        description: 'Add exam marks to start tracking performance.',
+      );
+    }
+
+    final weak = state.weakSubjects.take(2).toList();
+    final overall = latest.overallPercent;
+
+    return AppCard(
+      radius: 18,
+      onTap: () => root.pushNamed(Routes.resultDetail, arguments: latest.id),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: overall == null ? k.surf2 : k.priC,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  percentLabel(overall),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                    color: overall == null ? k.tx4 : k.priInk,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      latest.examLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${AppDate.short(latest.date)} · '
+                      '${latest.gradedSubjectCount} subjects scored',
+                      style: TextStyle(fontSize: 12, color: k.tx4),
+                    ),
+                  ],
+                ),
+              ),
+              StrokeIcon(AppIcons.forward, size: 16, color: k.tx5),
+            ],
+          ),
+          if (weak.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final i in weak)
+                  StatusPill(
+                    label: '${i.subject} · ${percentLabel(i.averagePercent)}',
+                    background: k.errC,
+                    foreground: k.errInk,
+                    dotColor: k.err,
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

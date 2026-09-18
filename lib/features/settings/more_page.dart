@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
+import '../../core/config/feature_flags.dart';
+import '../../core/config/grade_scale.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/chips.dart';
@@ -29,6 +31,26 @@ class _MorePageState extends State<MorePage> {
   void _push(Widget page) => Navigator.of(context).push(
         MaterialPageRoute<void>(builder: (_) => page),
       );
+
+  /// The scale that turns this child's report-card grades into percents.
+  /// Per child, so it lives with the child rather than in app preferences.
+  Future<void> _pickGradeScale() async {
+    final state = AppScope.read(context);
+    final choice = await pickOption(
+      context,
+      title: 'Grade scale',
+      options: [for (final s in GradeScale.all) s.label],
+      current: state.gradeScale.label,
+    );
+    if (choice == null || !mounted) return;
+    final scale = GradeScale.all.firstWhere((s) => s.label == choice);
+    try {
+      await state.setGradeScale(scale.id);
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.failure(context, error, title: "Couldn't change grade scale");
+    }
+  }
 
   Future<void> _logout() async {
     final confirmed = await confirmDelete(
@@ -145,6 +167,13 @@ class _MorePageState extends State<MorePage> {
                         value: '${state.subjects.length}',
                         onTap: () => _push(const SubjectsPage()),
                       ),
+                      if (kShowExamMarks)
+                        SettingsRow(
+                          label: 'Grade scale',
+                          subtitle: 'How letter grades become percentages',
+                          value: state.gradeScale.label,
+                          onTap: _pickGradeScale,
+                        ),
                     ],
                   ),
                   const SizedBox(height: 20),

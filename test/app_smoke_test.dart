@@ -11,10 +11,12 @@ import 'package:parent_academic_diary/core/services/connectivity_service.dart';
 import 'package:parent_academic_diary/core/services/prefs_service.dart';
 import 'package:parent_academic_diary/core/theme/app_theme.dart';
 import 'package:parent_academic_diary/core/widgets/image_slot.dart';
+import 'package:parent_academic_diary/core/widgets/layout.dart';
 import 'package:parent_academic_diary/data/app_state.dart';
 import 'package:parent_academic_diary/data/firestore_paths.dart';
 import 'package:parent_academic_diary/data/models.dart';
 import 'package:parent_academic_diary/data/repositories/auth_repository.dart';
+import 'package:parent_academic_diary/features/performance/performance_page.dart';
 import 'package:parent_academic_diary/shell/main_shell.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -141,37 +143,222 @@ void main() {
     expect(find.text('Fractions Practice'), findsWidgets);
   });
 
-  testWidgets('bottom navigation has no Performance tab', (tester) async {
+  testWidgets('bottom navigation carries the Performance tab', (tester) async {
     await pumpShell(tester);
 
+    expect(kShowExamMarks, isTrue);
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Timeline'), findsOneWidget);
+    expect(find.text('Performance'), findsOneWidget);
     expect(find.text('More'), findsOneWidget);
-    expect(find.text('Performance'), findsNothing);
-    expect(kShowExamMarks, isFalse);
   });
 
-  testWidgets('home hides every marks surface', (tester) async {
+  testWidgets('home shows the marks surfaces', (tester) async {
     await pumpShell(tester);
 
     expect(find.text('Worksheet'), findsOneWidget);
     expect(find.text('Classwork'), findsOneWidget);
-    expect(find.text('Marks'), findsNothing);
-    expect(find.text('LATEST MARKS'), findsNothing);
+    expect(find.text('Marks'), findsOneWidget);
+    expect(find.text('LATEST MARKS'), findsOneWidget);
+    // No result yet: the block says so rather than showing a blank card.
+    expect(find.text('No marks yet'), findsOneWidget);
   });
 
   testWidgets(
-    'home screen offers quick actions for worksheet, classwork, exam and image',
+    'home screen offers quick actions for worksheet, classwork, exam, marks '
+    'and image',
     (tester) async {
       await pumpShell(tester);
 
       expect(find.text('Worksheet'), findsWidgets);
       expect(find.text('Classwork'), findsWidgets);
       expect(find.text('Exam'), findsWidgets);
+      expect(find.text('Marks'), findsWidgets);
       expect(find.text('Add from Image'), findsOneWidget);
-      expect(find.text('Marks'), findsNothing);
     },
   );
+
+  testWidgets('performance tab shows its empty state before any marks', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('Performance'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No marks yet'), findsOneWidget);
+    expect(find.text('Add Marks'), findsOneWidget);
+    expect(find.text('All years'), findsOneWidget);
+  });
+
+  testWidgets(
+    'performance tab renders the weak-subject card in both themes at phone '
+    'width',
+    (tester) async {
+      await seed(tester);
+      await tester.runAsync(() async {
+        // Three results: Mathematics sits around 45%, Science around 88%.
+        for (final (label, day, maths, science) in const [
+          ('Unit Test 1', 10, 48.0, 86.0),
+          ('Unit Test 2', 20, 45.0, 88.0),
+          ('Term 1', 30, 42.0, 90.0),
+        ]) {
+          await state.saveResult(
+            ExamResult(
+              id: '',
+              childId: '',
+              academicYearId: '',
+              examLabel: label,
+              date: DateTime(2026, 7, day),
+              scores: [
+                SubjectScore(subject: 'Mathematics', marks: maths, maxMarks: 100),
+                SubjectScore(subject: 'English', marks: 70, maxMarks: 100),
+                SubjectScore(subject: 'Science', marks: science, maxMarks: 100),
+              ],
+            ),
+          );
+        }
+        await _settle(14);
+      });
+
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.625;
+      addTearDown(tester.view.reset);
+
+      for (final brightness in Brightness.values) {
+        tester.platformDispatcher.platformBrightnessTestValue = brightness;
+        addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+
+        await tester.pumpWidget(
+          AppScope(
+            state: state,
+            child: ListenableBuilder(
+              listenable: state,
+              builder: (context, _) => MaterialApp(
+                theme: AppTheme.light(),
+                darkTheme: AppTheme.dark(),
+                themeMode: state.themeMode,
+                onGenerateRoute: Routes.onGenerateRoute,
+                home: const MainShell(),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Home: the "Latest marks" block names the newest card and flags
+        // the weak subject.
+        expect(find.text('Term 1'), findsOneWidget, reason: '$brightness');
+        expect(find.textContaining('Mathematics · 45%'), findsOneWidget);
+
+        await tester.tap(find.text('Performance'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('NEEDS ATTENTION'), findsOneWidget);
+        expect(find.byType(WeakSubjectCard), findsOneWidget);
+        expect(find.text('Averaging 45% — below a passing mark'), findsOneWidget);
+        expect(find.text('Needs attention'), findsOneWidget);
+        expect(find.text('View subject'), findsOneWidget);
+        // Prompt 02 wires this; until then it must not be offered.
+        expect(find.text('Generate practice'), findsNothing);
+        expect(find.text('RESULTS · 3'), findsOneWidget);
+
+        // Result detail is reachable from the list. The tab holds a second,
+        // horizontal Scrollable (the scope chips), so name the outer one.
+        final page = find.byType(Scrollable).first;
+        await tester.scrollUntilVisible(
+          find.text('Unit Test 2'),
+          200,
+          scrollable: page,
+        );
+        // A sliver child can exist in the cache extent while still sitting
+        // below the viewport, where a tap would miss it.
+        await tester.ensureVisible(find.text('Unit Test 2'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Unit Test 2'));
+        await tester.pumpAndSettle();
+        expect(find.text('Entered by you'), findsOneWidget);
+        expect(find.text('45 / 100'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+
+        // And the subject page from the weak card, with its Marks tab.
+        await tester.scrollUntilVisible(
+          find.text('View subject'),
+          -200,
+          scrollable: page,
+        );
+        await tester.ensureVisible(find.text('View subject'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('View subject'));
+        await tester.pumpAndSettle();
+        expect(find.text('Marks'), findsOneWidget);
+        // Five tab chips overflow the strip under the test font; scroll the
+        // chip into view before tapping it.
+        await tester.ensureVisible(find.text('Marks'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Marks'));
+        await tester.pumpAndSettle();
+        expect(find.text('MARKS · MATHEMATICS'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Home'));
+        await tester.pumpAndSettle();
+      }
+    },
+  );
+
+  testWidgets('adding marks from the quick action lands on Performance', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('Marks').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Add Marks'), findsOneWidget);
+
+    await tester.tap(find.text('Unit Test 1'));
+    await tester.pumpAndSettle();
+
+    // Each subject row is a card whose first two fields are marks and max.
+    // 30% against a 90% sibling is what makes Mathematics weak under §E; a
+    // lone 45% would only be "watch". Rows below the fold are not built
+    // until scrolled to, so each is brought into view first.
+    Future<void> enterRow(String subject, String marks, String max) async {
+      final list = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.text(subject), 200, scrollable: list);
+      await tester.ensureVisible(find.text(subject));
+      await tester.pumpAndSettle();
+      final card = find.ancestor(
+        of: find.text(subject),
+        matching: find.byType(AppCard),
+      );
+      final fields = find.descendant(of: card, matching: find.byType(TextField));
+      await tester.enterText(fields.at(0), marks);
+      await tester.enterText(fields.at(1), max);
+      await tester.pumpAndSettle();
+    }
+
+    await enterRow('Mathematics', '30', '100');
+    // On the row and, with one row scored, as the footer's overall too.
+    expect(find.text('30%'), findsNWidgets(2), reason: 'live percent');
+    // Scrolling to English's row can un-build Mathematics's, now off-screen
+    // in the lazy list — the footer is the one figure guaranteed to still be
+    // there.
+    await enterRow('English', '90', '100');
+    expect(find.text('60%'), findsOneWidget, reason: 'live overall in footer');
+
+    // The save button lives in the sticky footer, so it is always on screen.
+    await tester.tap(find.text('Save Marks'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => _settle(12));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Performance'));
+    await tester.pumpAndSettle();
+    expect(find.text('RESULTS · 1'), findsOneWidget);
+    expect(find.byType(WeakSubjectCard), findsOneWidget);
+  });
 
   testWidgets('saving a worksheet puts it on the timeline', (tester) async {
     await pumpShell(tester);
@@ -240,9 +427,7 @@ void main() {
     );
   });
 
-  testWidgets('timeline filter sheet includes exam but excludes marks', (
-    tester,
-  ) async {
+  testWidgets('timeline filter sheet offers exam and marks', (tester) async {
     await pumpShell(tester);
 
     await tester.tap(find.text('Timeline'));
@@ -253,11 +438,19 @@ void main() {
 
     expect(find.text('Filter timeline'), findsOneWidget);
     // The timeline behind the sheet also labels its cards, so these are
-    // "at least one" — the assertion that matters is the Marks absence.
+    // "at least one".
     expect(find.text('Worksheet'), findsWidgets);
     expect(find.text('Classwork'), findsWidgets);
     expect(find.text('Exam'), findsWidgets);
-    expect(find.text('Marks'), findsNothing);
+    expect(find.text('Marks'), findsWidgets);
+
+    // Marks is a results filter: with none saved, the timeline says so
+    // rather than showing classwork under the wrong chip.
+    await tester.tap(find.text('Marks').last);
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+    expect(state.filter.type, 'Marks');
+    expect(find.text('No marks yet'), findsOneWidget);
   });
 
   testWidgets(
@@ -301,6 +494,8 @@ void main() {
     expect(find.text('Manage children'), findsOneWidget);
     expect(find.text('Academic years'), findsOneWidget);
     expect(find.text('Subjects'), findsOneWidget);
+    expect(find.text('Grade scale'), findsOneWidget);
+    expect(find.text('CBSE 9-point'), findsOneWidget);
 
     // Theme, Notifications and Backup & sync have no settings row anymore —
     // theme follows the system and reminders are simply always on.

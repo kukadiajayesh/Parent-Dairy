@@ -14,6 +14,7 @@ import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../result/result_card.dart';
 
 /// Search across the diary, grouped by record type. The design shows a
 /// "Worksheets · 2 / Classwork · 0" layout with a per-group empty state.
@@ -30,6 +31,7 @@ class _SearchPageState extends State<SearchPage> {
 
   Timer? _debounce;
   List<DiaryRecord> _results = const [];
+  List<ExamResult> _marks = const [];
   bool _searching = false;
   bool _allYears = false;
 
@@ -62,6 +64,7 @@ class _SearchPageState extends State<SearchPage> {
     if (query.isEmpty) {
       setState(() {
         _results = const [];
+        _marks = const [];
         _searching = false;
       });
       return;
@@ -71,12 +74,19 @@ class _SearchPageState extends State<SearchPage> {
     setState(() => _searching = true);
 
     try {
-      final found = await AppScope.read(
-        context,
-      ).search(query, allYears: _allYears);
+      final state = AppScope.read(context);
+      // Records and results are separate collections; two queries in flight
+      // together cost no more wall-clock than one.
+      final (found, marks) = await (
+        state.search(query, allYears: _allYears),
+        kShowExamMarks
+            ? state.searchResults(query, allYears: _allYears)
+            : Future.value(const <ExamResult>[]),
+      ).wait;
       if (!mounted || id != _requestId) return;
       setState(() {
         _results = found;
+        _marks = marks;
         _searching = false;
       });
     } catch (error) {
@@ -142,7 +152,9 @@ class _SearchPageState extends State<SearchPage> {
                               decoration: InputDecoration(
                                 isDense: true,
                                 border: InputBorder.none,
-                                hintText: 'Search worksheets and classwork',
+                                hintText: kShowExamMarks
+                                    ? 'Search worksheets, classwork and marks'
+                                    : 'Search worksheets and classwork',
                                 hintStyle: TextStyle(
                                   fontSize: 14.5,
                                   fontWeight: FontWeight.w500,
@@ -237,7 +249,25 @@ class _SearchPageState extends State<SearchPage> {
                     records: classwork,
                     showEmpty: hasQuery && !_searching,
                   ),
-                  // The design adds an "Exams · n" group behind showExamMarks.
+                  if (kShowExamMarks) ...[
+                    const SizedBox(height: 18),
+                    _ResultGroup(
+                      label: 'Exams',
+                      records: _results
+                          .where((r) => r.type == RecordType.exam)
+                          .toList(),
+                      showEmpty: hasQuery && !_searching,
+                    ),
+                    if (_marks.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      SectionLabel('Marks · ${_marks.length}'),
+                      const SizedBox(height: 10),
+                      for (final result in _marks) ...[
+                        ResultCard(result: result),
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                  ],
                   if (!hasQuery) ...[
                     const SizedBox(height: 18),
                     const _SearchHint(),
@@ -312,6 +342,8 @@ class _ResultGroup extends StatelessWidget {
               onTap: () => root.pushNamed(
                 record.isWorksheet
                     ? Routes.worksheetDetail
+                    : record.isExam
+                    ? Routes.examDetail
                     : Routes.classworkDetail,
                 arguments: record.id,
               ),

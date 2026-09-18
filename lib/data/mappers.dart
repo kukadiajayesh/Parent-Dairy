@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/config/grade_scale.dart';
 import '../core/theme/subject_hue.dart';
 import 'models.dart';
 
@@ -31,6 +32,15 @@ abstract final class Map$ {
 
   static bool flag(Object? value, [bool fallback = false]) =>
       value is bool ? value : fallback;
+
+  /// Marks arrive as int, double or (from a scanned card) a string; anything
+  /// else is treated as "not reported" rather than as zero.
+  static double? number(Object? value) => switch (value) {
+    double d => d.isFinite ? d : null,
+    int i => i.toDouble(),
+    String s => double.tryParse(s.trim()),
+    _ => null,
+  };
 
   static SubjectHue hue(Object? value) => SubjectHue.values.firstWhere(
     (h) => h.name == value,
@@ -74,6 +84,7 @@ abstract final class Map$ {
         ? null
         : Timestamp.fromDate(c.dateOfBirth!),
     'notes': c.notes,
+    'gradeScaleId': c.gradeScaleId,
     'isDeleted': false,
     'updatedAt': FieldValue.serverTimestamp(),
   };
@@ -94,6 +105,7 @@ abstract final class Map$ {
       rollNumber: m['rollNumber'] as String?,
       dateOfBirth: date(m['dateOfBirth']),
       notes: str(m['notes']),
+      gradeScaleId: str(m['gradeScaleId'], GradeScale.defaultId),
     );
   }
 
@@ -252,6 +264,106 @@ abstract final class Map$ {
       }
     }
     // Firestore caps array members; 40 words is far more than any title needs.
+    return words.take(40).toList();
+  }
+
+  // ── ExamResult ──────────────────────────────────────────────────────────
+  static Map<String, dynamic> subjectScoreToMap(SubjectScore s) => {
+    'subject': s.subject,
+    'marks': s.marks,
+    'maxMarks': s.maxMarks,
+    'grade': s.grade,
+    'classRank': s.classRank,
+    'remarks': s.remarks,
+    'absent': s.absent,
+    // gradeScaleId is written once on the result, not per row.
+  };
+
+  static SubjectScore subjectScoreFrom(
+    Map<String, dynamic> m, {
+    String gradeScaleId = GradeScale.defaultId,
+  }) {
+    final rank = m['classRank'];
+    return SubjectScore(
+      subject: str(m['subject']),
+      marks: number(m['marks']),
+      maxMarks: number(m['maxMarks']),
+      grade: m['grade'] is String && (m['grade'] as String).trim().isNotEmpty
+          ? m['grade'] as String
+          : null,
+      classRank: rank == null ? null : integer(rank),
+      remarks: str(m['remarks']),
+      absent: flag(m['absent']),
+      gradeScaleId: gradeScaleId,
+    );
+  }
+
+  static Map<String, dynamic> resultToMap(ExamResult r) => {
+    'childId': r.childId,
+    'academicYearId': r.academicYearId,
+    'examLabel': r.examLabel,
+    'searchTerms': resultSearchTerms(r),
+    'date': Timestamp.fromDate(r.date),
+    'examRecordId': r.examRecordId,
+    'scores': [for (final s in r.scores) subjectScoreToMap(s)],
+    'attendancePercent': r.attendancePercent,
+    'teacherRemarks': r.teacherRemarks,
+    'source': r.source.wire,
+    'extractionConfidence': r.extractionConfidence,
+    'needsReview': r.needsReview,
+    'gradeScaleId': r.gradeScaleId,
+    'isDeleted': r.isDeleted,
+    'deletedAt': r.deletedAt == null
+        ? null
+        : Timestamp.fromDate(r.deletedAt!),
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
+
+  static ExamResult resultFrom(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final m = doc.data() ?? const {};
+    final scale = str(m['gradeScaleId'], GradeScale.defaultId);
+    final rawScores = m['scores'];
+    final confidence = number(m['extractionConfidence']);
+    return ExamResult(
+      id: doc.id,
+      childId: str(m['childId']),
+      academicYearId: str(m['academicYearId']),
+      examLabel: str(m['examLabel']),
+      date: date(m['date']) ?? DateTime.now(),
+      examRecordId: m['examRecordId'] as String?,
+      scores: [
+        if (rawScores is List)
+          for (final entry in rawScores)
+            if (entry is Map)
+              subjectScoreFrom(
+                Map<String, dynamic>.from(entry),
+                gradeScaleId: scale,
+              ),
+      ],
+      attendancePercent: number(m['attendancePercent']),
+      teacherRemarks: str(m['teacherRemarks']),
+      source: ResultSource.fromWire(m['source'] as String?),
+      extractionConfidence: confidence == null
+          ? 1
+          : confidence.clamp(0, 1).toDouble(),
+      needsReview: flag(m['needsReview']),
+      gradeScaleId: scale,
+      createdAt: date(m['createdAt']),
+      updatedAt: date(m['updatedAt']),
+      isDeleted: flag(m['isDeleted']),
+      deletedAt: date(m['deletedAt']),
+    );
+  }
+
+  /// Exam label plus every subject name, so "term" or "science" finds the
+  /// report card from global search the same way it finds a worksheet.
+  static List<String> resultSearchTerms(ExamResult r) {
+    final words = <String>{};
+    for (final source in [r.examLabel, for (final s in r.scores) s.subject]) {
+      for (final word in source.toLowerCase().split(RegExp(r'[^a-z0-9]+'))) {
+        if (word.length > 1) words.add(word);
+      }
+    }
     return words.take(40).toList();
   }
 }

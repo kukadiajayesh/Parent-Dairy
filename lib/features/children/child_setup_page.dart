@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
+import '../../core/config/feature_flags.dart';
+import '../../core/config/grade_scale.dart';
 import '../../core/format.dart';
 import '../../core/services/image_service.dart';
 import '../../core/theme/app_tokens.dart';
@@ -44,6 +46,8 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
   late String _section = widget.child?.section ?? 'B';
   late String _year = widget.child?.year ?? _defaultYearLabel();
   late DateTime? _dateOfBirth = widget.child?.dateOfBirth;
+  late String _gradeScaleId =
+      widget.child?.gradeScaleId ?? GradeScale.defaultId;
 
   PickedAttachment? _photo;
   bool _saving = false;
@@ -166,6 +170,7 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
               : _rollNumber.text.trim(),
           dateOfBirth: _dateOfBirth,
           notes: _notes.text.trim(),
+          gradeScaleId: _gradeScaleId,
         ),
         photo: _photo,
       );
@@ -375,6 +380,23 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
                     trailing: PickerTrailing.calendar,
                     onTap: _pickDateOfBirth,
                   ),
+                  if (kShowExamMarks) ...[
+                    const SizedBox(height: 18),
+                    PickerField(
+                      label: 'Grade scale',
+                      value: GradeScale.byId(_gradeScaleId).label,
+                      onTap: () => _pick(
+                        title: 'Grade scale',
+                        options: [for (final s in GradeScale.all) s.label],
+                        current: GradeScale.byId(_gradeScaleId).label,
+                        onSelected: (v) => setState(
+                          () => _gradeScaleId = GradeScale.all
+                              .firstWhere((s) => s.label == v)
+                              .id,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   AppTextField(
                     label: 'Notes',

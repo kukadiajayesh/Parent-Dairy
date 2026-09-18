@@ -168,4 +168,103 @@ void main() {
       expect(Map$.childFrom(snapshot).initials, 'AP');
     });
   });
+
+
+  group('result mapping', () {
+    test('round-trips a report card and stamps the scale onto every row',
+        () async {
+      final original = ExamResult(
+        id: 'ignored',
+        childId: 'child-1',
+        academicYearId: '2026–27',
+        examLabel: 'Half Yearly',
+        date: DateTime(2026, 9, 15),
+        examRecordId: 'exam-9',
+        scores: const [
+          SubjectScore(
+            subject: 'Mathematics',
+            marks: 72,
+            maxMarks: 80,
+            classRank: 3,
+            remarks: 'Careless in ch. 4',
+          ),
+          SubjectScore(subject: 'English', grade: 'A2'),
+          SubjectScore(subject: 'Hindi', absent: true),
+        ],
+        attendancePercent: 96,
+        teacherRemarks: 'Good effort',
+        source: ResultSource.scanned,
+        extractionConfidence: 0.8,
+        needsReview: true,
+        gradeScaleId: 'five',
+      );
+
+      final snapshot = await write(Map$.resultToMap(original));
+      final parsed = Map$.resultFrom(snapshot);
+
+      expect(parsed.childId, 'child-1');
+      expect(parsed.academicYearId, '2026–27');
+      expect(parsed.examLabel, 'Half Yearly');
+      expect(parsed.date, DateTime(2026, 9, 15));
+      expect(parsed.examRecordId, 'exam-9');
+      expect(parsed.scores, hasLength(3));
+      expect(parsed.scores[0].marks, 72);
+      expect(parsed.scores[0].maxMarks, 80);
+      expect(parsed.scores[0].classRank, 3);
+      expect(parsed.scores[0].remarks, 'Careless in ch. 4');
+      expect(parsed.scores[1].grade, 'A2');
+      expect(parsed.scores[1].gradeScaleId, 'five');
+      expect(parsed.scores[2].absent, isTrue);
+      expect(parsed.attendancePercent, 96);
+      expect(parsed.teacherRemarks, 'Good effort');
+      expect(parsed.source, ResultSource.scanned);
+      expect(parsed.extractionConfidence, 0.8);
+      expect(parsed.needsReview, isTrue);
+      expect(parsed.gradeScaleId, 'five');
+      expect(parsed.isDeleted, isFalse);
+    });
+
+    test('a partial or oddly typed document parses instead of throwing',
+        () async {
+      final snapshot = await write(<String, dynamic>{
+        'examLabel': 'Only a label',
+        'scores': [
+          {'subject': 'Mathematics', 'marks': '45', 'maxMarks': 50},
+          'not a map',
+          {'subject': 'English', 'grade': '', 'classRank': 2.0},
+        ],
+        'extractionConfidence': 7,
+      });
+      final parsed = Map$.resultFrom(snapshot);
+
+      expect(parsed.examLabel, 'Only a label');
+      expect(parsed.scores, hasLength(2));
+      expect(parsed.scores[0].marks, 45);
+      expect(parsed.scores[0].percent, 90);
+      expect(parsed.scores[1].grade, isNull, reason: 'blank grade is no grade');
+      expect(parsed.scores[1].classRank, 2);
+      expect(parsed.extractionConfidence, 1, reason: 'clamped into 0–1');
+      expect(parsed.source, ResultSource.manual);
+      expect(parsed.gradeScaleId, 'cbse9');
+    });
+
+    test('search terms cover the label and every subject', () {
+      final r = ExamResult(
+        id: '',
+        childId: 'c',
+        academicYearId: '2026–27',
+        examLabel: 'Unit Test 2',
+        date: DateTime(2026, 9, 1),
+        scores: const [
+          SubjectScore(subject: 'Social Science'),
+          SubjectScore(subject: 'Hindi'),
+        ],
+      );
+      expect(
+        Map$.resultSearchTerms(r),
+        containsAll(['unit', 'test', 'social', 'science', 'hindi']),
+      );
+      expect(Map$.resultSearchTerms(r), isNot(contains('2')));
+    });
+  });
 }

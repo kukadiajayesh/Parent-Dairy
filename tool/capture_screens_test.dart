@@ -195,6 +195,58 @@ void main() {
     await tester.tap(find.text('Worksheet').first);
     await shoot(tester, '12-add-worksheet-dark');
   });
+
+  testWidgets('performance screens', (tester) async {
+    await seed(tester);
+    await tester.runAsync(() async {
+      for (final (label, day, maths, science) in const [
+        ('Unit Test 1', 10, 48.0, 86.0),
+        ('Unit Test 2', 20, 45.0, 88.0),
+        ('Term 1', 30, 42.0, 90.0),
+      ]) {
+        await state.saveResult(
+          ExamResult(
+            id: '',
+            childId: '',
+            academicYearId: '',
+            examLabel: label,
+            date: DateTime(2026, 7, day),
+            scores: [
+              SubjectScore(subject: 'Mathematics', marks: maths, maxMarks: 100),
+              SubjectScore(subject: 'English', marks: 70, maxMarks: 100),
+              SubjectScore(subject: 'Science', marks: science, maxMarks: 100),
+              const SubjectScore(subject: 'Hindi', grade: 'B2'),
+            ],
+          ),
+        );
+      }
+      await _settle(14);
+    });
+
+    for (final (brightness, suffix) in const [
+      (Brightness.light, ''),
+      (Brightness.dark, '-dark'),
+    ]) {
+      tester.platformDispatcher.platformBrightnessTestValue = brightness;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+
+      await pump(tester, const MainShell());
+      await tester.tap(find.text('Performance'));
+      await shoot(tester, '13-performance$suffix');
+
+      // The results list sits below the fold; bring the card on screen so
+      // the tap lands rather than hitting the cache extent.
+      await tester.ensureVisible(find.text('Term 1').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Term 1').last);
+      await shoot(tester, '14-result-detail$suffix');
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Home'));
+      await shoot(tester, '15-home-latest-marks$suffix');
+    }
+  });
 }
 
 Future<void> _settle([int rounds = 6]) async {

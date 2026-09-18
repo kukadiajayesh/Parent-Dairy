@@ -7,6 +7,7 @@ import '../core/widgets/app_icons.dart';
 import '../core/widgets/pressable.dart';
 import '../core/widgets/stroke_icon.dart';
 import '../features/home/home_page.dart';
+import '../features/performance/performance_page.dart';
 import '../features/settings/more_page.dart';
 import '../features/timeline/timeline_page.dart';
 import 'shell_scope.dart';
@@ -23,12 +24,14 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  static const _tabs = <_TabSpec>[
-    _TabSpec('home', 'Home', AppIcons.navHome),
-    _TabSpec('timeline', 'Timeline', AppIcons.navTimeline),
+  static final _tabs = <_TabSpec>[
+    const _TabSpec('home', 'Home', AppIcons.navHome),
+    const _TabSpec('timeline', 'Timeline', AppIcons.navTimeline),
     // The design's "Performance" tab sits between Timeline and More and is
     // gated on showExamMarks; with the flag off it is not built at all.
-    _TabSpec('more', 'More', AppIcons.navMore),
+    if (kShowExamMarks)
+      const _TabSpec('performance', 'Performance', AppIcons.navPerformance),
+    const _TabSpec('more', 'More', AppIcons.navMore),
   ];
 
   final _navigatorKeys = List.generate(
@@ -52,6 +55,7 @@ class _MainShellState extends State<MainShell> {
   Widget _rootFor(int index) => switch (_tabs[index].id) {
     'home' => const HomePage(),
     'timeline' => const TimelinePage(),
+    'performance' => const PerformancePage(),
     _ => const MorePage(),
   };
 
@@ -194,12 +198,19 @@ class _NavItem extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              spec.label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: color,
+            // Four tabs leave ~100dp each; "Performance" fits in Figtree but
+            // a wider fallback face would wrap it and overflow the 70dp bar.
+            // Scaling down keeps one line whatever font is loaded.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                spec.label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
               ),
             ),
           ],

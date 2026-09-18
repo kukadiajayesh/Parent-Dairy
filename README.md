@@ -38,37 +38,57 @@ On iOS, `Info.plist` carries the `REVERSED_CLIENT_ID` URL scheme that Google
 Sign-In returns through. If `GoogleService-Info.plist` is ever regenerated with
 a new OAuth client, that scheme has to be updated to match.
 
-## Exam and marks UI is excluded
+## Exam and marks
 
 The prototype declares a `showExamMarks` prop (default `false`) and gates every
 exam- and marks-related surface behind it. This build mirrors that switch as
-`kShowExamMarks` in `lib/core/config/feature_flags.dart`, so the excluded UI is
-one constant away rather than deleted. With the flag off:
+`kShowExamMarks` in `lib/core/config/feature_flags.dart`. It is now **on**: the
+surfaces below are built, and the flag stays in place so the whole layer can be
+pulled with one constant if a marks screen ever has to be held back.
 
-| Excluded | Where the design puts it |
+| Surface | Where |
 | --- | --- |
 | Performance tab | bottom navigation, between Timeline and More |
 | Add exam / Add marks | home quick actions, the Add sheet |
-| Exam detail, Marks history, Exams list | pushed from the timeline and lists |
+| Result detail (report card) | Performance tab, "Latest marks", search, timeline's Marks filter |
 | "Latest marks" block | home dashboard |
-| Exam / Marks timeline entries | academic timeline |
-| Exams / Marks subject tabs and the trend chart | subject detail |
-| Exam / Marks filter chips | timeline filter sheet |
-| Exams group | search results |
+| Marks filter | timeline filter sheet — shows the year's report cards by day |
+| Exams / Marks subject tabs, the trend chart and the average headline | subject detail |
+| Exams and Marks groups | search results |
+| Grade scale | More → Academic, and the child setup form |
 
-Three follow-on calls were made where the design does not gate something that
-depends on marks. Each is commented at the site:
+**Results** live in their own collection,
+`users/{uid}/children/{childId}/results/{resultId}` — deliberately not a
+`DiaryRecord` variant, because a report card spans every subject at once while
+a record is single-subject. Each row is a `SubjectScore` (marks, max, grade,
+rank, remarks, absent); grades resolve to a percent through the child's
+`GradeScale` (`lib/core/config/grade_scale.dart`: CBSE 9-point, five-letter,
+or none) using the **midpoint** of the band, and the UI marks that percent as
+approximate. An absent row is never scored as zero. A result files under the
+academic year its *date* falls in, not the one selected.
 
-- **Onboarding slide 3** ("Track Academic Progress") follows the same flag — its
-  entire content is a marks trend chart.
-- **Onboarding slide 1** copy drops "and exam papers", and its fourth tile reads
-  "Homework" instead of "Exam paper".
-- **Subject detail** is reached from the Worksheets / Classwork subject group
-  headers. The design's only entry point is the Performance tab, which is gone;
-  its header shows a record count where the design shows an average mark.
+**Weak subjects** are decided by `lib/data/analytics/subject_insights.dart` —
+pure Dart, deterministic, and the only thing that ranks a subject. Per subject
+it takes the mean percent, the child's overall mean, a least-squares trend over
+three or more results, and the worksheet completion/overdue counts, adds the
+weights from prompt `01` §E, and bands the total (≥ 4 weak, 2–3 watch, else
+strong at ≥ 75% or steady). A subject with no scored result is `unknown` —
+worksheet signals alone never make it weak. Every band carries the reasons
+that produced it, verbatim, and the UI shows those rather than paraphrasing.
+`AppState.subjectInsights` memoises the computation against the results,
+records and subjects list identities so reading it from `build()` is free.
 
-Turning the flag on needs the exam/marks screens built — the models, repository
-and rules do not cover them yet.
+`kAiEnabled` (default `false`) hides the "Generate practice" action on a weak
+subject until the Gemini prompt (`02`) wires it.
+
+**Deploying the shape.** The rules now allow `type == 'exam'` records (with an
+`examType` and timetable), add a `results` block, and the indexes file carries
+the four `results` indexes (year-scoped and all-years, with and without
+search). After pulling this change:
+
+```sh
+firebase deploy --only firestore:rules,firestore:indexes
+```
 
 ## Structure
 
@@ -76,7 +96,7 @@ and rules do not cover them yet.
 lib/
   app/            MaterialApp, theme wiring, root route table, startup error
   core/
-    config/       kShowExamMarks
+    config/       kShowExamMarks, kAiEnabled, GradeScale
     errors/       AppFailure — every SDK exception mapped to parent-readable text
     services/     auth-adjacent platform work: prefs, connectivity, images,
                   attachment actions, notifications, share intents, telemetry
@@ -87,10 +107,14 @@ lib/
     models.dart          pure Dart, no Firebase import — every widget uses it
     mappers.dart         Firestore ⇄ model conversion
     firestore_paths.dart every collection path in one place
-    repositories/        auth, child, subject, year, record, attachment, uploads
+    analytics/           subject_insights.dart — the weak-subject rule, pure Dart
+    repositories/        auth, child, subject, year, record, result, attachment,
+                         uploads
     app_state.dart       the one ChangeNotifier the screens read
-  features/       one directory per screen family
-  shell/          three-tab frame (Home / Timeline / More) and the Add sheet
+  features/       one directory per screen family (performance/ and result/
+                  are the marks screens)
+  shell/          four-tab frame (Home / Timeline / Performance / More) and
+                  the Add sheet
 ```
 
 **State** is still one `ChangeNotifier` (`AppState`) handed down by an
@@ -142,16 +166,19 @@ cannot start.
 flutter test
 ```
 
-86 tests, no network:
+173 tests, no network:
 
 | File | Covers |
 | --- | --- |
-| `models_test.dart` | wire-format round trips, initials, sync aggregation, overdue |
-| `mappers_test.dart` | Firestore round trip, defensive reads of partial documents, search terms |
+| `models_test.dart` | wire-format round trips, initials, sync aggregation, overdue, `SubjectScore.percent`, `ExamResult.overallPercent` with absent rows and mixed maxima, year spans |
+| `mappers_test.dart` | Firestore round trip, defensive reads of partial documents, search terms, result round trip |
 | `record_repository_test.dart` | save/update, §31 validation, year scoping, soft delete, search, subject and year repos |
-| `app_state_test.dart` | auth gating, first-child seeding, record lifecycle, year switching, offline banner |
+| `result_repository_test.dart` | save/validate (label, date, marks ≤ max), year scoping, all-years, soft delete, search |
+| `grade_scale_test.dart` | every CBSE band boundary, five-letter, none, unknown grades |
+| `subject_insights_test.dart` | the §E table: weak/strong, single result, no results, all-absent, grade-only, each signal weight, recency, focus chapters, weak ordering |
+| `app_state_test.dart` | auth gating, first-child seeding, record lifecycle, year switching, offline banner, result lifecycle, year-by-date filing, duplicate detection, insight memoisation, grade scale |
 | `upload_queue_test.dart` | a failed upload reports `failed` rather than idle, bounded retries, offline waiting |
-| `app_smoke_test.dart` | the real screens over a fake Firestore: no exam or marks surface reachable, browse thumbnails render their attachment, and the skeletons fit a real phone width |
+| `app_smoke_test.dart` | the real screens over a fake Firestore: the Performance tab and its weak-subject card in both themes at phone width, marks entry end to end, browse thumbnails render their attachment, and the skeletons fit a real phone width |
 
 Two of those exist because the first device run found what the suite had missed.
 The viewport is pinned to 411.4dp — at the 432dp it used to use, a horizontal
@@ -184,7 +211,9 @@ layout, not assertions.
 
 ## Not yet wired
 
-- Exam, marks, grades and the performance dashboard (spec §16–§22) — see above.
+- "Generate practice" on a weak subject, report-card scanning and every other
+  AI action — prompt `02`, behind `kAiEnabled`. `ResultSource.scanned` and
+  `needsReview` are on the model so those documents already parse.
 - iOS share extension. The Android share intent is complete; `receive_sharing_intent`
   needs a separate extension target for iOS.
 - Server-sent push. `firebaseMessagingBackgroundHandler` is registered and the

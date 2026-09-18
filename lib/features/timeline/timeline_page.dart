@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
+import '../../core/config/feature_flags.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/attachment_image.dart';
@@ -16,6 +17,7 @@ import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
 import '../children/child_switcher_sheet.dart';
+import '../result/result_card.dart';
 import '../search/search_page.dart';
 import '../settings/year_switcher_sheet.dart';
 import '../viewer/viewer_page.dart';
@@ -30,7 +32,12 @@ class TimelinePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final k = context.t;
     final state = AppScope.of(context);
-    final groups = _getGroups(state);
+    // "Marks" is a results filter, not a record type: the timeline swaps to
+    // report cards grouped by day, so the chip the design offers does
+    // something rather than filtering to nothing.
+    final showMarks = kShowExamMarks && state.filter.type == 'Marks';
+    final groups = showMarks ? const <_TimelineGroup>[] : _getGroups(state);
+    final marks = showMarks ? _filteredResults(state) : const <ExamResult>[];
 
     return Scaffold(
       backgroundColor: k.bg,
@@ -87,7 +94,24 @@ class TimelinePage extends StatelessWidget {
                   ],
                   const _ScopeChips(),
                   const SizedBox(height: 16),
-                  if (groups.isEmpty)
+                  if (showMarks)
+                    if (marks.isEmpty)
+                      const EmptyStateView(
+                        title: 'No marks yet',
+                        description:
+                            'Add exam marks to start tracking performance.',
+                      )
+                    else
+                      for (final (heading, items) in _byDay(marks)) ...[
+                        SectionLabel(heading),
+                        const SizedBox(height: 10),
+                        for (final result in items) ...[
+                          ResultCard(result: result),
+                          const SizedBox(height: 10),
+                        ],
+                        const SizedBox(height: 6),
+                      ]
+                  else if (groups.isEmpty)
                     const EmptyStateView(
                       title: 'Nothing here yet',
                       description:
@@ -138,6 +162,34 @@ class TimelinePage extends StatelessWidget {
         _ => true,
       };
     }).toList();
+  }
+
+  /// Results under the same date filter as records; subject and sort do not
+  /// apply, since a report card spans every subject.
+  List<ExamResult> _filteredResults(AppState state) {
+    final filter = state.filter;
+    final now = DateTime(2026, 8, 23); // the design's "today"
+    return state.resultsByDateDesc.where((r) {
+      return switch (filter.date) {
+        'Today' => AppDate.sameDay(r.date, now),
+        'This week' => now.difference(r.date).inDays.abs() <= 7,
+        'This month' => r.date.year == now.year && r.date.month == now.month,
+        _ => true,
+      };
+    }).toList();
+  }
+
+  static List<(String, List<ExamResult>)> _byDay(List<ExamResult> results) {
+    final groups = <(String, List<ExamResult>)>[];
+    for (final r in results) {
+      final heading = AppDate.dayHeading(r.date);
+      if (groups.isNotEmpty && groups.last.$1 == heading) {
+        groups.last.$2.add(r);
+      } else {
+        groups.add((heading, [r]));
+      }
+    }
+    return groups;
   }
 
   List<_TimelineGroup> _getGroups(AppState state) {

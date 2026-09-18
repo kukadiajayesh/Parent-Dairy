@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 /// users/{uid}/children/{childId}
 /// users/{uid}/children/{childId}/subjects/{subjectId}
 /// users/{uid}/children/{childId}/records/{recordId}
+/// users/{uid}/children/{childId}/results/{resultId}
 /// ```
 ///
 /// Two deliberate choices against the spec's sketch:
@@ -58,6 +59,15 @@ abstract final class Paths {
     String uid,
     String childId,
   ) => child(uid, childId).collection('records');
+
+  /// Exam results — one document per report card, deliberately *not* a
+  /// record variant: a report card spans every subject at once, while a
+  /// record is single-subject, and the Performance tab needs the
+  /// "this exam, across subjects" view intact.
+  static CollectionReference<Map<String, dynamic>> results(
+    String uid,
+    String childId,
+  ) => child(uid, childId).collection('results');
 
   /// Storage layout from §33. Files are namespaced by record so deleting a
   /// record can drop its whole folder, and never land in a shared bucket root.

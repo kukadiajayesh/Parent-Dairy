@@ -9,12 +9,15 @@ import '../core/services/image_service.dart';
 import '../core/services/notification_service.dart';
 import '../core/services/prefs_service.dart';
 import '../core/services/telemetry_service.dart';
+import '../core/config/grade_scale.dart';
 import '../core/theme/subject_hue.dart';
+import 'analytics/subject_insights.dart';
 import 'models.dart';
 import 'repositories/attachment_repository.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/child_repository.dart';
 import 'repositories/record_repository.dart';
+import 'repositories/result_repository.dart';
 import 'repositories/subject_repository.dart';
 import 'repositories/upload_queue.dart';
 import 'repositories/year_repository.dart';
@@ -64,6 +67,7 @@ class AppState extends ChangeNotifier {
     SubjectRepository subjects = const SubjectRepository(),
     YearRepository years = const YearRepository(),
     RecordRepository records = const RecordRepository(),
+    ResultRepository results = const ResultRepository(),
     AttachmentRepository? attachments,
     ConnectivityService? connectivity,
   }) : _auth = auth ?? AuthRepository(),
@@ -71,6 +75,7 @@ class AppState extends ChangeNotifier {
        _subjectRepo = subjects,
        _yearRepo = years,
        _recordRepo = records,
+       _resultRepo = results,
        _attachmentRepo = attachments ?? AttachmentRepository(),
        _connectivity = connectivity ?? ConnectivityService() {
     uploads = UploadQueue(
@@ -87,6 +92,7 @@ class AppState extends ChangeNotifier {
   final SubjectRepository _subjectRepo;
   final YearRepository _yearRepo;
   final RecordRepository _recordRepo;
+  final ResultRepository _resultRepo;
   final AttachmentRepository _attachmentRepo;
   final ConnectivityService _connectivity;
 
@@ -97,6 +103,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<AcademicYear>>? _yearsSub;
   StreamSubscription<List<Subject>>? _subjectsSub;
   StreamSubscription<List<DiaryRecord>>? _recordsSub;
+  StreamSubscription<List<ExamResult>>? _resultsSub;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -148,9 +155,12 @@ class AppState extends ChangeNotifier {
     _children = const [];
     _subjects = const [];
     _records = const [];
+    _results = const [];
+    _allYearResults = null;
     _years = const [];
     _childId = null;
     _loadingRecords = false;
+    _loadingResults = false;
 
     if (user == null) {
       _status = AuthStatus.signedOut;
@@ -177,6 +187,7 @@ class AppState extends ChangeNotifier {
       _status = AuthStatus.needsChild;
       _subjects = const [];
       _records = const [];
+      _results = const [];
       notifyListeners();
       return;
     }
@@ -210,13 +221,14 @@ class AppState extends ChangeNotifier {
             ? remembered!
             : value.firstWhere((y) => y.active, orElse: () => value.first).label,
       );
-      _resubscribeRecords();
+      _resubscribeChildYearScoped();
     }
     notifyListeners();
   }
 
   void _onStreamError(Object error, StackTrace stack) {
     _loadingRecords = false;
+    _loadingResults = false;
     _lastError = AppFailure.from(error);
     unawaited(Telemetry.recordError(error, stack, context: 'appStateStream'));
     notifyListeners();
@@ -239,20 +251,27 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }, onError: _onStreamError);
 
-    _resubscribeRecords();
+    _resubscribeChildYearScoped();
     unawaited(uploads.resume(uid: uid, childId: childId));
   }
 
-  void _resubscribeRecords() {
+  /// Re-runs every query scoped by *both* child and year — records and exam
+  /// results. Called whenever either selection changes.
+  void _resubscribeChildYearScoped() {
     final uid = _auth.uid;
     final childId = _childId;
     final year = _activeYear;
     _recordsSub?.cancel();
+    _resultsSub?.cancel();
     // Same for records: switching child or year must not leave the old list on
     // screen while the new query runs.
     _records = const [];
+    _results = const [];
+    // The all-years cache belongs to one child; a switch invalidates it.
+    _allYearResults = null;
     if (uid == null || childId == null || year == null) {
       _loadingRecords = false;
+      _loadingResults = false;
       return;
     }
 
@@ -264,6 +283,24 @@ class AppState extends ChangeNotifier {
           _loadingRecords = false;
           notifyListeners();
         }, onError: _onStreamError);
+
+    _loadingResults = true;
+    _resultsSub = _resultRepo
+        .watch(uid: uid, childId: childId, yearLabel: year)
+        .listen((value) {
+          _results = value;
+          _loadingResults = false;
+          notifyListeners();
+        }, onError: _onStreamError);
+    if (_insightsAllYears) unawaited(_loadAllYearResults());
+  }
+
+  /// Retries the child/year streams after an error — what the Performance
+  /// tab's error state calls.
+  void retryStreams() {
+    clearError();
+    _resubscribeChildYearScoped();
+    notifyListeners();
   }
 
   void _cancelDataSubscriptions() {
@@ -271,14 +308,19 @@ class AppState extends ChangeNotifier {
     _yearsSub?.cancel();
     _subjectsSub?.cancel();
     _recordsSub?.cancel();
+    _resultsSub?.cancel();
     _childrenSub = null;
     _yearsSub = null;
     _subjectsSub = null;
     _recordsSub = null;
+    _resultsSub = null;
   }
 
   bool _loadingRecords = false;
   bool get isLoadingRecords => _loadingRecords;
+
+  bool _loadingResults = false;
+  bool get isLoadingResults => _loadingResults;
 
   AppFailure? _lastError;
   AppFailure? get lastError => _lastError;
@@ -345,8 +387,18 @@ class AppState extends ChangeNotifier {
     if (uid == null) return;
     _setActiveYear(label);
     unawaited(_yearRepo.setActive(uid, label));
-    _resubscribeRecords();
+    _resubscribeChildYearScoped();
     notifyListeners();
+  }
+
+  /// The year a dated document belongs to (§G): whichever known year's
+  /// April–March span contains [date], else the active year. A report card
+  /// dated last March files under last year even if this year is selected.
+  String yearLabelFor(DateTime date) {
+    for (final year in _years) {
+      if (year.contains(date)) return year.label;
+    }
+    return activeYear;
   }
 
   /// One place that assigns the active year, so it is never changed without
@@ -362,7 +414,7 @@ class AppState extends ChangeNotifier {
     await _yearRepo.create(uid, year.copyWith(active: makeActive));
     if (makeActive) {
       _setActiveYear(year.label);
-      _resubscribeRecords();
+      _resubscribeChildYearScoped();
     }
     unawaited(Telemetry.yearCreated());
     notifyListeners();
@@ -417,6 +469,18 @@ class AppState extends ChangeNotifier {
     final uid = _auth.uid;
     if (uid == null) return;
     await _childRepo.delete(uid, childId);
+  }
+
+  /// The active child's grade scale — what resolves a report-card grade to a
+  /// percent for every new result.
+  GradeScale get gradeScale => activeChild.gradeScale;
+
+  Future<void> setGradeScale(String scaleId) async {
+    final uid = _auth.uid;
+    final child = activeChild;
+    if (uid == null || child.id.isEmpty) return;
+    if (child.gradeScaleId == scaleId) return;
+    await _childRepo.update(uid, child.copyWith(gradeScaleId: scaleId));
   }
 
   // ── Subjects ─────────────────────────────────────────────────────────────
@@ -669,6 +733,201 @@ class AppState extends ChangeNotifier {
       yearLabel: allYears ? null : activeYear,
     );
   }
+
+  // ── Exam results ─────────────────────────────────────────────────────────
+  List<ExamResult> _results = const [];
+
+  /// The active year's results, as the stream delivered them (newest first).
+  List<ExamResult> get results => List.unmodifiable(_results);
+
+  List<ExamResult> get resultsByDateDesc =>
+      _results.toList()..sort((a, b) => b.date.compareTo(a.date));
+
+  ExamResult? get latestResult => resultsByDateDesc.firstOrNull;
+
+  /// Looks in the active year first, then the all-years cache, so a detail
+  /// screen opened from the all-years view still resolves.
+  ExamResult? resultById(String id) {
+    for (final r in _results) {
+      if (r.id == id) return r;
+    }
+    for (final r in _allYearResults ?? const <ExamResult>[]) {
+      if (r.id == id) return r;
+    }
+    return null;
+  }
+
+  /// Results that could be the same report card entered twice (§G): same
+  /// label, same day, and not the one being edited.
+  List<ExamResult> duplicatesOf(ExamResult draft) => _results
+      .where(
+        (r) =>
+            r.id != draft.id &&
+            r.examLabel.trim().toLowerCase() ==
+                draft.examLabel.trim().toLowerCase() &&
+            r.date.year == draft.date.year &&
+            r.date.month == draft.date.month &&
+            r.date.day == draft.date.day,
+      )
+      .toList();
+
+  /// Saves a result, stamping the child, the year its date falls in (§G) and
+  /// the child's grade scale. Like [saveRecord], returns as soon as Firestore
+  /// accepts the write — which it does from cache when offline.
+  Future<ExamResult> saveResult(ExamResult result) async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null) {
+      throw const AppFailure(
+        FailureKind.sessionExpired,
+        'Please sign in again to save these marks.',
+      );
+    }
+
+    final prepared = result.copyWith(
+      childId: childId,
+      academicYearId: yearLabelFor(result.date),
+      // A scanned result keeps the scale it was reviewed under; a manual one
+      // always takes the child's current setting.
+      gradeScaleId: result.id.isEmpty ? gradeScale.id : result.gradeScaleId,
+    );
+
+    final saved = await _resultRepo.save(
+      uid: uid,
+      childId: childId,
+      result: prepared,
+    );
+    if (result.id.isEmpty) {
+      unawaited(
+        Telemetry.resultCreated(
+          subjectCount: saved.scores.length,
+          source: saved.source.wire,
+        ),
+      );
+    }
+    // A result outside the active year never arrives on the stream, so the
+    // all-years cache is the only place it would show; drop it to refetch.
+    _allYearResults = null;
+    if (_insightsAllYears) unawaited(_loadAllYearResults());
+    return saved;
+  }
+
+  /// Soft delete — the result leaves the tab but stays recoverable.
+  Future<void> deleteResult(String id) async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null) return;
+    await _resultRepo.softDelete(uid: uid, childId: childId, resultId: id);
+    _allYearResults = null;
+    unawaited(Telemetry.resultDeleted());
+  }
+
+  Future<void> restoreResult(String id) async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null) return;
+    await _resultRepo.restore(uid: uid, childId: childId, resultId: id);
+    _allYearResults = null;
+  }
+
+  Future<List<ExamResult>> searchResults(
+    String query, {
+    bool allYears = false,
+  }) async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null) return const [];
+    return _resultRepo.search(
+      uid: uid,
+      childId: childId,
+      query: query,
+      yearLabel: allYears ? null : activeYear,
+    );
+  }
+
+  // ── Weak-subject analytics ───────────────────────────────────────────────
+
+  /// Every year's results, fetched once per child when the parent asks for
+  /// the all-years view. Null until then.
+  List<ExamResult>? _allYearResults;
+  bool _loadingAllYears = false;
+  bool get isLoadingAllYearResults => _loadingAllYears;
+
+  bool _insightsAllYears = false;
+
+  /// Whether the Performance tab reads across every year or just the active
+  /// one. Default: the active year — the question a parent usually asks.
+  bool get insightsAllYears => _insightsAllYears;
+
+  Future<void> setInsightsAllYears(bool value) async {
+    if (_insightsAllYears == value) return;
+    _insightsAllYears = value;
+    notifyListeners();
+    if (value && _allYearResults == null) await _loadAllYearResults();
+  }
+
+  Future<void> _loadAllYearResults() async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null || _loadingAllYears) return;
+    _loadingAllYears = true;
+    notifyListeners();
+    try {
+      _allYearResults = await _resultRepo.allYears(
+        uid: uid,
+        childId: childId,
+      );
+    } catch (error, stack) {
+      _lastError = AppFailure.from(error);
+      unawaited(Telemetry.recordError(error, stack, context: 'allYearResults'));
+    } finally {
+      _loadingAllYears = false;
+      notifyListeners();
+    }
+  }
+
+  /// The result set the insights are computed over.
+  List<ExamResult> get insightResults =>
+      _insightsAllYears ? (_allYearResults ?? _results) : _results;
+
+  // Memo key: list *identities*, not contents. The streams hand over a fresh
+  // list on every change, so identity is a cheap, exact "did anything move".
+  List<ExamResult>? _memoResults;
+  List<DiaryRecord>? _memoRecords;
+  List<Subject>? _memoSubjects;
+  String? _memoChildName;
+  List<SubjectInsight> _memoInsights = const [];
+
+  /// One insight per subject (§E). Read from `build()` on the home and
+  /// performance screens, so it is memoised against the inputs and only
+  /// recomputed when a result, record or subject list actually changes.
+  List<SubjectInsight> get subjectInsights {
+    final inputs = insightResults;
+    final childName = activeChild.name;
+    if (identical(inputs, _memoResults) &&
+        identical(_records, _memoRecords) &&
+        identical(_subjects, _memoSubjects) &&
+        childName == _memoChildName) {
+      return _memoInsights;
+    }
+    _memoResults = inputs;
+    _memoRecords = _records;
+    _memoSubjects = _subjects;
+    _memoChildName = childName;
+    _memoInsights = computeSubjectInsights(
+      results: inputs,
+      records: _records,
+      subjects: subjectNames,
+      childName: childName.isEmpty || childName == '—' ? 'your child' : childName,
+    );
+    return _memoInsights;
+  }
+
+  /// Weak-band subjects, worst first.
+  List<SubjectInsight> get weakSubjects => weakSubjectsFrom(subjectInsights);
+
+  SubjectInsight? insightFor(String subject) =>
+      subjectInsights.where((i) => i.subject == subject).firstOrNull;
 
   /// Re-runs any stranded uploads — what "Retry" and the More screen's sync row
   /// call.

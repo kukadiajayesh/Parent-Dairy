@@ -11,6 +11,7 @@ import 'package:parent_academic_diary/data/models.dart';
 import 'package:parent_academic_diary/data/repositories/auth_repository.dart';
 import 'package:parent_academic_diary/data/repositories/subject_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:parent_academic_diary/data/analytics/subject_insights.dart';
 
 /// Lets the Firestore streams deliver before asserting.
 ///
@@ -332,6 +333,142 @@ void main() {
     test('always follows the system setting', () async {
       state = await signedInState();
       expect(state.themeMode, ThemeMode.system);
+    });
+  });
+
+
+  group('exam results', () {
+    setUp(() async {
+      state = await signedInState();
+      await state.saveChild(
+        const Child(
+          name: 'Aarav',
+          initials: 'AA',
+          school: 'S',
+          grade: 'Class 5',
+          section: 'B',
+          year: '2026–27',
+        ),
+      );
+      await settle(12);
+    });
+
+    ExamResult card(
+      String label,
+      DateTime date,
+      Map<String, double> marks,
+    ) => ExamResult(
+      id: '',
+      childId: '',
+      academicYearId: '',
+      examLabel: label,
+      date: date,
+      scores: [
+        for (final e in marks.entries)
+          SubjectScore(subject: e.key, marks: e.value, maxMarks: 100),
+      ],
+    );
+
+    test('a saved result arrives on the stream with the child stamped',
+        () async {
+      await state.saveResult(
+        card('Unit Test 1', DateTime(2026, 8, 20), {'Mathematics': 45}),
+      );
+      await settle(10);
+
+      expect(state.results, hasLength(1));
+      expect(state.results.single.childId, state.activeChild.id);
+      expect(state.results.single.academicYearId, '2026–27');
+      expect(state.results.single.gradeScaleId, 'cbse9');
+      expect(state.latestResult?.examLabel, 'Unit Test 1');
+    });
+
+    test('a result is filed under the year its date falls in (§G)', () async {
+      await state.addYear(
+        const AcademicYear(label: '2025–26', span: '', records: 0),
+        makeActive: false,
+      );
+      await settle(10);
+
+      final saved = await state.saveResult(
+        card('Old term', DateTime(2026, 2, 10), {'Mathematics': 60}),
+      );
+      expect(saved.academicYearId, '2025–26');
+      await settle(10);
+      expect(state.results, isEmpty, reason: 'not the active year');
+
+      await state.setInsightsAllYears(true);
+      await settle(10);
+      expect(state.insightResults.map((r) => r.examLabel), ['Old term']);
+    });
+
+    test('delete then restore round-trips', () async {
+      await state.saveResult(
+        card('Unit Test 1', DateTime(2026, 8, 20), {'Mathematics': 45}),
+      );
+      await settle(10);
+      final id = state.results.single.id;
+
+      await state.deleteResult(id);
+      await settle(10);
+      expect(state.results, isEmpty);
+
+      await state.restoreResult(id);
+      await settle(10);
+      expect(state.resultById(id), isNotNull);
+    });
+
+    test('flags a same-label same-day duplicate', () async {
+      await state.saveResult(
+        card('Unit Test 1', DateTime(2026, 8, 20), {'Mathematics': 45}),
+      );
+      await settle(10);
+
+      final again = card('unit test 1', DateTime(2026, 8, 20, 18), {
+        'Mathematics': 50,
+      });
+      expect(state.duplicatesOf(again), hasLength(1));
+      expect(
+        state.duplicatesOf(again.copyWith(date: DateTime(2026, 8, 21))),
+        isEmpty,
+      );
+    });
+
+    test('insights are memoised until a stream delivers', () async {
+      await state.saveResult(
+        card('Unit Test 1', DateTime(2026, 8, 20), {
+          'Mathematics': 45,
+          'Science': 88,
+        }),
+      );
+      await settle(10);
+
+      final first = state.subjectInsights;
+      expect(identical(state.subjectInsights, first), isTrue);
+      expect(
+        first.singleWhere((i) => i.subject == 'Mathematics').band,
+        InsightBand.weak,
+      );
+      expect(state.weakSubjects.map((i) => i.subject), ['Mathematics']);
+
+      await state.saveResult(
+        card('Unit Test 2', DateTime(2026, 9, 5), {'Mathematics': 95}),
+      );
+      await settle(10);
+      final second = state.subjectInsights;
+      expect(identical(second, first), isFalse);
+      expect(
+        second.singleWhere((i) => i.subject == 'Mathematics').sampleCount,
+        2,
+      );
+    });
+
+    test('the grade scale is a per-child setting', () async {
+      expect(state.gradeScale.id, 'cbse9');
+      await state.setGradeScale('five');
+      await settle(10);
+      expect(state.activeChild.gradeScaleId, 'five');
+      expect(state.gradeScale.label, 'Five-letter (A–E)');
     });
   });
 }

@@ -53,7 +53,7 @@ abstract final class AddSheet {
                 abbr: 'EX',
                 tint: k.warnC,
                 ink: k.warnInk,
-                onTap: () {},
+                onTap: () => go(Routes.addExam),
               ),
               const SizedBox(height: 8),
               _AddRow(
@@ -62,7 +62,7 @@ abstract final class AddSheet {
                 abbr: 'MK',
                 tint: k.subHinC,
                 ink: k.subHinInk,
-                onTap: () {},
+                onTap: () => go(Routes.addResult),
               ),
             ],
           ],

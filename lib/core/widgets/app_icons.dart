@@ -145,5 +145,9 @@ abstract final class AppIcons {
   static const navHome =
       SvgIcon(['M4 11l8-6.5 8 6.5v8a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z']);
   static const navTimeline = SvgIcon(['M4 6.5h16M4 12h16M4 17.5h10']);
+
+  /// Three rising bars — the Performance tab. Not in the design file (it
+  /// gates the tab off), drawn to match the weight of its siblings.
+  static const navPerformance = SvgIcon(['M5 19v-6M12 19V5M19 19v-9']);
   static const navMore = SvgIcon(['M5 12h.01M12 12h.01M19 12h.01']);
 }
