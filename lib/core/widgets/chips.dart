@@ -172,12 +172,18 @@ class StatusPill extends StatelessWidget {
             leading!,
             const SizedBox(width: 5),
           ],
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w700,
-              color: foreground,
+          // Loose flex in a min-sized Row is legal under unbounded width (a
+          // Wrap), and lets the pill ellipsise when a bounded parent squeezes it.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+                color: foreground,
+              ),
             ),
           ),
         ],

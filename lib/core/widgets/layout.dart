@@ -24,7 +24,11 @@ class SectionLabel extends StatelessWidget {
     if (trailing == null) return label;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [label, trailing!],
+      children: [
+        Expanded(child: label),
+        const SizedBox(width: 12),
+        trailing!,
+      ],
     );
   }
 }
@@ -145,48 +149,53 @@ class ScreenHeader extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return SizedBox(
-      height: 52,
-      child: Row(
-        children: [
-          AppIconButton(
-            onTap: onBack ?? () => Navigator.of(context).maybePop(),
-            tooltip: leadingIsClose ? 'Close' : 'Back',
-            child: StrokeIcon(
-              leadingIsClose ? AppIcons.close : AppIcons.back,
-              size: 22,
-              color: k.tx,
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (title != null)
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    title!,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.titleLarge.copyWith(color: k.tx),
-                  ),
-                  if (subtitle != null)
-                    Text(
-                      subtitle!,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: k.tx4,
-                      ),
-                    ),
-                ],
+    // The bar is a fixed 52dp, like Material's own app bar: title and
+    // subtitle scale up to 1.3× and then ellipsise rather than overflow.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          children: [
+            AppIconButton(
+              onTap: onBack ?? () => Navigator.of(context).maybePop(),
+              tooltip: leadingIsClose ? 'Close' : 'Back',
+              child: StrokeIcon(
+                leadingIsClose ? AppIcons.close : AppIcons.back,
+                size: 22,
+                color: k.tx,
               ),
-            )
-          else
-            const Spacer(),
-          ...actions,
-        ],
+            ),
+            const SizedBox(width: 8),
+            if (title != null)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      title!,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.titleLarge.copyWith(color: k.tx),
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: k.tx4,
+                        ),
+                      ),
+                  ],
+                ),
+              )
+            else
+              const Spacer(),
+            ...actions,
+          ],
+        ),
       ),
     );
   }
@@ -320,7 +329,15 @@ class SettingsRow extends StatelessWidget {
                 ),
                 if (value != null) ...[
                   const SizedBox(width: 12),
-                  Text(value!, style: TextStyle(fontSize: 12.5, color: k.tx4)),
+                  Flexible(
+                    child: Text(
+                      value!,
+                      textAlign: TextAlign.end,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: k.tx4),
+                    ),
+                  ),
                 ],
                 if (trailing != null) ...[const SizedBox(width: 12), trailing!],
                 if (showChevron) ...[

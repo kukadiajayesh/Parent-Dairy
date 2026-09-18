@@ -77,7 +77,13 @@ class ChildrenPage extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Row(
+                          // A Wrap, so at large text sizes the actions drop
+                          // under the year pill instead of overflowing.
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
                               StatusPill(
                                 label: child.year,
@@ -85,67 +91,72 @@ class ChildrenPage extends StatelessWidget {
                                 foreground: k.tx3,
                                 fontSize: 11.5,
                               ),
-                              const Spacer(),
-                              _SmallAction(
-                                label: 'Edit',
-                                background: k.surf2,
-                                hoverBackground: k.hov,
-                                foreground: k.tx2,
-                                onTap: () => root.pushNamed(
-                                  Routes.childSetup,
-                                  arguments: child,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _SmallAction(
-                                label: 'Delete',
-                                background: k.errC,
-                                hoverBackground: k.errCH,
-                                foreground: k.err,
-                                onTap: () async {
-                                  // The app has nowhere to send a parent with
-                                  // no children, so the last one stays.
-                                  if (state.children.length <= 1) {
-                                    AppToast.show(
-                                      context,
-                                      title: "Can't remove the last child",
-                                      description:
-                                          'Add another child first, then '
-                                          'remove this one.',
-                                      kind: ToastKind.warn,
-                                      actionLabel: 'OK',
-                                    );
-                                    return;
-                                  }
-                                  final confirmed = await confirmDelete(
-                                    context,
-                                    title: 'Delete ${child.name}?',
-                                    description:
-                                        'Their records are hidden from your '
-                                        'diary but stay recoverable.',
-                                  );
-                                  if (!confirmed || !context.mounted) return;
-                                  try {
-                                    await state.deleteChild(child.id);
-                                    if (!context.mounted) return;
-                                    AppToast.show(
-                                      context,
-                                      title: 'Child removed',
-                                      description:
-                                          '${child.name} was removed from '
-                                          'your diary.',
-                                      kind: ToastKind.warn,
-                                      actionLabel: 'OK',
-                                    );
-                                  } catch (error) {
-                                    if (!context.mounted) return;
-                                    AppToast.failure(
-                                      context,
-                                      error,
-                                      title: "Couldn't remove child",
-                                    );
-                                  }
-                                },
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _SmallAction(
+                                    label: 'Edit',
+                                    background: k.surf2,
+                                    hoverBackground: k.hov,
+                                    foreground: k.tx2,
+                                    onTap: () => root.pushNamed(
+                                      Routes.childSetup,
+                                      arguments: child,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _SmallAction(
+                                    label: 'Delete',
+                                    background: k.errC,
+                                    hoverBackground: k.errCH,
+                                    foreground: k.err,
+                                    onTap: () async {
+                                      // The app has nowhere to send a parent with
+                                      // no children, so the last one stays.
+                                      if (state.children.length <= 1) {
+                                        AppToast.show(
+                                          context,
+                                          title: "Can't remove the last child",
+                                          description:
+                                              'Add another child first, then '
+                                              'remove this one.',
+                                          kind: ToastKind.warn,
+                                          actionLabel: 'OK',
+                                        );
+                                        return;
+                                      }
+                                      final confirmed = await confirmDelete(
+                                        context,
+                                        title: 'Delete ${child.name}?',
+                                        description:
+                                            'Their records are hidden from your '
+                                            'diary but stay recoverable.',
+                                      );
+                                      if (!confirmed || !context.mounted)
+                                        return;
+                                      try {
+                                        await state.deleteChild(child.id);
+                                        if (!context.mounted) return;
+                                        AppToast.show(
+                                          context,
+                                          title: 'Child removed',
+                                          description:
+                                              '${child.name} was removed from '
+                                              'your diary.',
+                                          kind: ToastKind.warn,
+                                          actionLabel: 'OK',
+                                        );
+                                      } catch (error) {
+                                        if (!context.mounted) return;
+                                        AppToast.failure(
+                                          context,
+                                          error,
+                                          title: "Couldn't remove child",
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ],
                               ),
                             ],
                           ),

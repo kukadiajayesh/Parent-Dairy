@@ -164,12 +164,16 @@ class _GoogleButton extends StatelessWidget {
                 else
                   const _GoogleMark(size: 20),
                 const SizedBox(width: 12),
-                Text(
-                  busy ? 'Signing in…' : 'Continue with Google',
-                  style: TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w700,
-                    color: busy ? k.tx3 : k.tx,
+                Flexible(
+                  child: Text(
+                    busy ? 'Signing in…' : 'Continue with Google',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      color: busy ? k.tx3 : k.tx,
+                    ),
                   ),
                 ),
               ],

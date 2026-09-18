@@ -377,7 +377,12 @@ class WeakSubjectCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              InsightBandPill(insight.band),
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: InsightBandPill(insight.band),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),

@@ -31,16 +31,21 @@ class ChildSetupPage extends StatefulWidget {
 }
 
 class _ChildSetupPageState extends State<ChildSetupPage> {
-  late final TextEditingController _name =
-      TextEditingController(text: widget.child?.name ?? '');
-  late final TextEditingController _school =
-      TextEditingController(text: widget.child?.school ?? '');
-  late final TextEditingController _grNumber =
-      TextEditingController(text: widget.child?.grNumber ?? '');
-  late final TextEditingController _rollNumber =
-      TextEditingController(text: widget.child?.rollNumber ?? '');
-  late final TextEditingController _notes =
-      TextEditingController(text: widget.child?.notes ?? '');
+  late final TextEditingController _name = TextEditingController(
+    text: widget.child?.name ?? '',
+  );
+  late final TextEditingController _school = TextEditingController(
+    text: widget.child?.school ?? '',
+  );
+  late final TextEditingController _grNumber = TextEditingController(
+    text: widget.child?.grNumber ?? '',
+  );
+  late final TextEditingController _rollNumber = TextEditingController(
+    text: widget.child?.rollNumber ?? '',
+  );
+  late final TextEditingController _notes = TextEditingController(
+    text: widget.child?.notes ?? '',
+  );
 
   late String _grade = widget.child?.grade ?? 'Class 5';
   late String _section = widget.child?.section ?? 'B';
@@ -263,22 +268,26 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
                         ),
                       ),
                       const SizedBox(width: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Profile photo',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Profile photo',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _photoImage == null ? 'Optional' : 'Tap to change',
-                            style: TextStyle(fontSize: 12.5, color: k.tx4),
-                          ),
-                        ],
+                            const SizedBox(height: 2),
+                            Text(
+                              _photoImage == null
+                                  ? 'Optional'
+                                  : 'Tap to change',
+                              style: TextStyle(fontSize: 12.5, color: k.tx4),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -307,9 +316,7 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
                           value: _grade,
                           onTap: () => _pick(
                             title: 'Class',
-                            options: [
-                              for (var i = 1; i <= 12; i++) 'Class $i',
-                            ],
+                            options: [for (var i = 1; i <= 12; i++) 'Class $i'],
                             current: _grade,
                             onSelected: (v) => setState(() => _grade = v),
                           ),
@@ -323,7 +330,17 @@ class _ChildSetupPageState extends State<ChildSetupPage> {
                           onTap: () => _pick(
                             title: 'Section',
                             options: const [
-                              'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+                              'A',
+                              'B',
+                              'C',
+                              'D',
+                              'E',
+                              'F',
+                              'G',
+                              'H',
+                              'I',
+                              'J',
+                              'K',
                             ],
                             current: _section,
                             onSelected: (v) => setState(() => _section = v),

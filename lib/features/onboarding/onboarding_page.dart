@@ -116,12 +116,23 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 ),
               ),
               Expanded(
-                child: Center(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    child: KeyedSubtree(
-                      key: ValueKey(slide.title),
-                      child: _SlideArtwork(slide: slide),
+                // The artwork is drawn at its design size and scaled down
+                // when large text below it leaves less room, so it never
+                // overflows the column.
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          child: KeyedSubtree(
+                            key: ValueKey(slide.title),
+                            child: _SlideArtwork(slide: slide),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

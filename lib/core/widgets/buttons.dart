@@ -147,6 +147,8 @@ class _Label extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Text(
       label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontSize: fontSize,
         fontWeight: FontWeight.w700,
@@ -159,7 +161,7 @@ class _Label extends StatelessWidget {
       children: [
         IconTheme(data: IconThemeData(color: color), child: icon!),
         const SizedBox(width: 9),
-        text,
+        Flexible(child: text),
       ],
     );
   }

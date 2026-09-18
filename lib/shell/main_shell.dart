@@ -128,28 +128,35 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.t;
-    return Container(
-      decoration: BoxDecoration(
-        color: k.bg,
-        border: Border(top: BorderSide(color: k.bd2)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 70,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
-            child: Row(
-              children: [
-                for (var i = 0; i < tabs.length; i++)
-                  Expanded(
-                    child: _NavItem(
-                      spec: tabs[i],
-                      selected: i == index,
-                      onTap: () => onTap(i),
+    // Tab labels scale to 1.3× and no further — past that a four-tab bar
+    // cannot keep one line per label — and the bar grows 6dp to make room.
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    final grow = ((scale - 1) / 0.3).clamp(0.0, 1.0);
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Container(
+        decoration: BoxDecoration(
+          color: k.bg,
+          border: Border(top: BorderSide(color: k.bd2)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 70 + 6 * grow,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
+              child: Row(
+                children: [
+                  for (var i = 0; i < tabs.length; i++)
+                    Expanded(
+                      child: _NavItem(
+                        spec: tabs[i],
+                        selected: i == index,
+                        onTap: () => onTap(i),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

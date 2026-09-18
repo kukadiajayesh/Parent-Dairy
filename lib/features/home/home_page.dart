@@ -507,12 +507,14 @@ class _PendingBanner extends StatelessWidget {
         children: [
           Dot(color: k.warn, size: 8),
           const SizedBox(width: 8),
-          Text(
-            '$count worksheet${count == 1 ? '' : 's'} pending',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: k.warnInk,
+          Expanded(
+            child: Text(
+              '$count worksheet${count == 1 ? '' : 's'} pending',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: k.warnInk,
+              ),
             ),
           ),
         ],
