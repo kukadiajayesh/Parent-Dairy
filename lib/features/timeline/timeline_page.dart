@@ -201,34 +201,36 @@ class TimelinePage extends StatelessWidget {
     final filter = state.filter;
 
     if (filter.sortBy == 'Chapter') {
-      // Sort records by chapter ascending
-      records.sort((a, b) {
-        final aChap = a.chapterLabel;
-        final bChap = b.chapterLabel;
-
-        if (aChap.isEmpty && bChap.isEmpty) return 0;
-        if (aChap.isEmpty) return 1; // Empty chapters at the end
-        if (bChap.isEmpty) return -1;
-
-        // Try natural sort extracting number, e.g. "Chapter 4" -> 4
-        final reg = RegExp(r'\d+');
-        final aMatch = reg.firstMatch(aChap);
-        final bMatch = reg.firstMatch(bChap);
-
-        if (aMatch != null && bMatch != null) {
-          final aNum = int.parse(aMatch.group(0)!);
-          final bNum = int.parse(bMatch.group(0)!);
-          final cmp = aNum.compareTo(bNum);
+      // Natural order on the chapter number ("Chapter 4" before "Chapter
+      // 10"), alphabetical when there is none, empty chapters last, newest
+      // first within a chapter. The number is extracted once per record
+      // rather than inside the comparator: a year of records is ~N log N
+      // comparisons, and each used to compile the pattern afresh.
+      final keyed = [
+        for (final r in records)
+          (
+            record: r,
+            label: r.chapterLabel,
+            number: int.tryParse(
+              _chapterNumber.firstMatch(r.chapterLabel)?.group(0) ?? '',
+            ),
+          ),
+      ];
+      keyed.sort((a, b) {
+        if (a.label.isEmpty && b.label.isEmpty) return 0;
+        if (a.label.isEmpty) return 1;
+        if (b.label.isEmpty) return -1;
+        if (a.number != null && b.number != null) {
+          final cmp = a.number!.compareTo(b.number!);
           if (cmp != 0) return cmp;
         }
-
-        // Fall back to alphabetical comparison
-        final cmpStr = aChap.compareTo(bChap);
+        final cmpStr = a.label.compareTo(b.label);
         if (cmpStr != 0) return cmpStr;
-
-        // If chapters are the same, sort by date descending
-        return b.date.compareTo(a.date);
+        return b.record.date.compareTo(a.record.date);
       });
+      records
+        ..clear()
+        ..addAll(keyed.map((k) => k.record));
 
       // Group by chapter
       final groups = <_TimelineGroup>[];
@@ -260,6 +262,9 @@ class TimelinePage extends StatelessWidget {
     }
   }
 }
+
+/// First run of digits in a chapter label — "Chapter 4" → 4.
+final _chapterNumber = RegExp(r'\d+');
 
 extension on DiaryRecord {
   int get year => date.year;

@@ -661,15 +661,29 @@ class AppState extends ChangeNotifier {
   List<DiaryRecord> _records = const [];
   List<DiaryRecord> get records => List.unmodifiable(_records);
 
-  List<DiaryRecord> get worksheets =>
-      _records.where((r) => r.type == RecordType.worksheet).toList();
+  /// The derived slices below are memoised against the identity of
+  /// [_records], which only changes when a Firestore snapshot lands. Every
+  /// screen reads two or three of them from `build()`, and each of the
+  /// connectivity, upload-queue and key-store ticks used to re-filter and
+  /// re-sort the whole year for nothing (prompt 04 §1.4). Returning the same
+  /// list instance also lets [groupBySubject] key its own cache on identity.
+  final _RecordsMemo _memo = _RecordsMemo();
 
-  List<DiaryRecord> get classwork =>
-      _records.where((r) => r.type == RecordType.classwork).toList();
+  List<DiaryRecord> get worksheets => _memo.worksheets(
+    _records,
+    () => _records.where((r) => r.type == RecordType.worksheet).toList(),
+  );
+
+  List<DiaryRecord> get classwork => _memo.classwork(
+    _records,
+    () => _records.where((r) => r.type == RecordType.classwork).toList(),
+  );
 
   /// Newest first — the order the timeline and "Recent activity" use.
-  List<DiaryRecord> get recordsByDateDesc =>
-      _records.toList()..sort((a, b) => b.date.compareTo(a.date));
+  List<DiaryRecord> get recordsByDateDesc => _memo.byDateDesc(
+    _records,
+    () => _records.toList()..sort((a, b) => b.date.compareTo(a.date)),
+  );
 
   /// The clock the app runs on: injectable for tests, wall clock otherwise.
   /// Screens that compare against "today" read this, never a pinned date.
@@ -2059,7 +2073,19 @@ class AppState extends ChangeNotifier {
 
   /// Groups records by subject in the configured subject order, dropping empty
   /// groups — the `groupBy` helper from the prototype.
+  ///
+  /// Memoised on `(source, subjects, listSubject, unit)`. [source] is
+  /// compared element-wise by identity rather than by list identity, because
+  /// the worksheets list hands in a freshly filtered copy on every build.
   List<SubjectGroup> groupBySubject(List<DiaryRecord> source, String unit) {
+    final cached = _memo.groups(source, _subjects, _listSubject, unit);
+    if (cached != null) return cached;
+    final groups = _groupBySubject(source, unit);
+    _memo.rememberGroups(source, _subjects, _listSubject, unit, groups);
+    return groups;
+  }
+
+  List<SubjectGroup> _groupBySubject(List<DiaryRecord> source, String unit) {
     final names = _listSubject == 'All' ? subjectNames : <String>[_listSubject];
     final groups = <SubjectGroup>[];
     for (final name in names) {
@@ -2088,6 +2114,96 @@ class AppState extends ChangeNotifier {
     uploads.dispose();
     unawaited(_connectivity.dispose());
     super.dispose();
+  }
+}
+
+/// Per-[AppState] cache for the derived record lists. Each entry remembers
+/// the source list it was computed from and is recomputed only when that
+/// identity changes; there is no TTL because the inputs are immutable lists
+/// that are replaced, never mutated.
+class _RecordsMemo {
+  List<DiaryRecord>? _worksheetsSource;
+  List<DiaryRecord> _worksheets = const [];
+  List<DiaryRecord>? _classworkSource;
+  List<DiaryRecord> _classwork = const [];
+  List<DiaryRecord>? _byDateSource;
+  List<DiaryRecord> _byDate = const [];
+
+  List<DiaryRecord>? _groupSource;
+  List<Subject>? _groupSubjects;
+  String? _groupListSubject;
+  String? _groupUnit;
+  List<SubjectGroup> _groups = const [];
+
+  List<DiaryRecord> worksheets(
+    List<DiaryRecord> source,
+    List<DiaryRecord> Function() compute,
+  ) {
+    if (!identical(source, _worksheetsSource)) {
+      _worksheetsSource = source;
+      _worksheets = List.unmodifiable(compute());
+    }
+    return _worksheets;
+  }
+
+  List<DiaryRecord> classwork(
+    List<DiaryRecord> source,
+    List<DiaryRecord> Function() compute,
+  ) {
+    if (!identical(source, _classworkSource)) {
+      _classworkSource = source;
+      _classwork = List.unmodifiable(compute());
+    }
+    return _classwork;
+  }
+
+  List<DiaryRecord> byDateDesc(
+    List<DiaryRecord> source,
+    List<DiaryRecord> Function() compute,
+  ) {
+    if (!identical(source, _byDateSource)) {
+      _byDateSource = source;
+      _byDate = List.unmodifiable(compute());
+    }
+    return _byDate;
+  }
+
+  List<SubjectGroup>? groups(
+    List<DiaryRecord> source,
+    List<Subject> subjects,
+    String listSubject,
+    String unit,
+  ) {
+    if (!identical(subjects, _groupSubjects) ||
+        listSubject != _groupListSubject ||
+        unit != _groupUnit ||
+        !_sameElements(source, _groupSource)) {
+      return null;
+    }
+    return _groups;
+  }
+
+  void rememberGroups(
+    List<DiaryRecord> source,
+    List<Subject> subjects,
+    String listSubject,
+    String unit,
+    List<SubjectGroup> groups,
+  ) {
+    _groupSource = source;
+    _groupSubjects = subjects;
+    _groupListSubject = listSubject;
+    _groupUnit = unit;
+    _groups = groups;
+  }
+
+  static bool _sameElements(List<DiaryRecord> a, List<DiaryRecord>? b) {
+    if (b == null || a.length != b.length) return false;
+    if (identical(a, b)) return true;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
   }
 }
 
