@@ -1,0 +1,16 @@
+{
+  "detected": {"subject": "Science", "examType": "Unit Test 2", "date": "2026-09-12",
+               "grade": "Class 4", "totalMarks": 30, "durationMinutes": 60, "confidence": 0.86},
+  "sections": [
+    {"name": "Section A", "instructions": "Answer all.",
+     "questions": [
+       {"number": "1(a)", "text": "Name the process by which plants make food.", "type": "short",
+        "marks": 2, "options": [], "pageIndex": 0, "confidence": 0.93, "needsReview": false, "studentAnswer": "Photosynthesis"},
+       {"number": "1(b)", "text": "Which part of the plant absorbs water?", "type": "mcq",
+        "marks": 1, "options": ["Leaf", "Root", "Stem", "Flower"], "pageIndex": 0, "confidence": 0.62, "needsReview": false, "studentAnswer": "Root"},
+       {"number": "2", "text": "Draw and label a leaf.", "type": "long",
+        "marks": 5, "options": [], "pageIndex": 1, "confidence": 0.9, "needsReview": true, "studentAnswer": null}
+     ]}
+  ],
+  "unreadableRegions": [{"pageIndex": 1, "note": "bottom third is cut off"}]
+}

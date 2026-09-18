@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../app/routes.dart';
-import '../../core/config/feature_flags.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/buttons.dart';
@@ -14,6 +13,7 @@ import '../../data/analytics/subject_insights.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
 import '../children/child_switcher_sheet.dart';
+import '../ai/generate_paper_page.dart';
 import '../result/result_card.dart';
 import '../settings/year_switcher_sheet.dart';
 import '../subject/subject_page.dart';
@@ -228,7 +228,16 @@ class _Dashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 22),
-        const SectionLabel('Needs attention'),
+        SectionLabel(
+          'Needs attention',
+          trailing: state.aiAvailable && weak.isNotEmpty
+              ? SectionAction(
+                  label: 'Focus plan',
+                  onTap: () => Navigator.of(context, rootNavigator: true)
+                      .pushNamed(Routes.focusPlan),
+                )
+              : null,
+        ),
         const SizedBox(height: 12),
         if (weak.isEmpty)
           const EmptyListNotice(
@@ -455,16 +464,23 @@ class WeakSubjectCard extends StatelessWidget {
                   ),
                 ),
               ),
-              // Wired by the Gemini prompt; until then the flag hides it so a
-              // parent never taps a button that does nothing.
-              if (kAiEnabled) ...[
+              // Pre-filled with the subject and its focus chapters; the
+              // generator's consent gate runs on the next screen.
+              if (state.aiAvailable) ...[
                 const SizedBox(width: 10),
                 Expanded(
                   child: AppOutlinedButton(
                     label: 'Generate practice',
                     height: 44,
                     borderRadius: 13,
-                    onPressed: null,
+                    onPressed: () => Navigator.of(context, rootNavigator: true)
+                        .pushNamed(
+                          Routes.aiGenerate,
+                          arguments: GenerateArgs(
+                            subject: insight.subject,
+                            chapters: insight.focusChapters,
+                          ),
+                        ),
                   ),
                 ),
               ],

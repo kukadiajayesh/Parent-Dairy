@@ -1,0 +1,11 @@
+{
+  "summary": "Mathematics is the one subject sitting well below the student's own average. The others are steady.",
+  "subjects": [
+    {"subject": "Mathematics", "why": "Averaging 45% against an overall 72%, and slipping 6 points each exam.",
+     "focusChapters": ["Chapter 4"],
+     "plan": [{"week": 1, "actions": ["Ten minutes of fraction sums daily", "Redo the pending worksheet"]},
+              {"week": 2, "actions": ["A short quiz on Friday"]}],
+     "practiceSuggestion": {"type": "quiz", "chapters": ["Chapter 4"], "questionCount": 10}},
+    {"subject": "", "why": "no subject name — dropped"}
+  ]
+}

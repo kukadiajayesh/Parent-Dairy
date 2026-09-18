@@ -13,6 +13,8 @@ import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../../data/models_ai.dart';
+import '../ai/ai_widgets.dart';
 import '../viewer/viewer_page.dart';
 
 /// Exam detail: subject tag, exam type, date, timetable image and the
@@ -46,6 +48,13 @@ class ExamDetailPage extends StatelessWidget {
     }
 
     final subject = state.subjectByName(record.subject);
+    final scanned = state.aiAvailable ? state.scannedPaperFor(record.id) : null;
+    final graded = scanned == null
+        ? null
+        : state
+              .generatedForRecord(record.id)
+              .where((g) => g.kind == GeneratedKind.gradedPaper)
+              .firstOrNull;
 
     Future<void> delete() async {
       if (!await confirmDelete(context)) return;
@@ -96,7 +105,14 @@ class ExamDetailPage extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                 children: [
-                  SubjectTag(name: record.subject, hue: subject.hue),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      SubjectTag(name: record.subject, hue: subject.hue),
+                      if (record.isAiGenerated) const AiBadge(label: 'Scanned'),
+                    ],
+                  ),
                   const SizedBox(height: 10),
                   Text(
                     record.examType,
@@ -116,6 +132,36 @@ class ExamDetailPage extends StatelessWidget {
                       color: k.tx3,
                     ),
                   ),
+                  if (scanned != null) ...[
+                    const SizedBox(height: 18),
+                    const SectionLabel('From the scan'),
+                    const SizedBox(height: 10),
+                    _AiAction(
+                      title: record.answerKey == null
+                          ? 'Generate answer key'
+                          : 'Answer key attached',
+                      description: record.answerKey == null
+                          ? 'Worked solutions and a marking scheme for every question'
+                          : 'AI-generated · verify before use · tap to view or replace',
+                      onTap: () => Navigator.of(context).pushNamed(
+                        Routes.answerKey,
+                        arguments: record.id,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _AiAction(
+                      title: graded == null ? 'Grade this paper' : 'Graded',
+                      description: scanned.asScannedPaper.hasStudentAnswers
+                          ? (graded == null
+                                ? 'Mark each handwritten answer and save the total as a result'
+                                : 'Saved as a result that needs your review · tap to revisit')
+                          : 'Scanned without answers — rescan the completed paper to grade it',
+                      onTap: () => Navigator.of(context).pushNamed(
+                        Routes.gradePaper,
+                        arguments: record.id,
+                      ),
+                    ),
+                  ],
                   if (record.examTimetable != null) ...[
                     const SizedBox(height: 18),
                     const SectionLabel('Exam timetable'),
@@ -131,7 +177,9 @@ class ExamDetailPage extends StatelessWidget {
                   if (record.attachments.isNotEmpty) ...[
                     const SizedBox(height: 18),
                     SectionLabel(
-                      'Previous papers · ${record.attachments.length}',
+                      record.isAiGenerated
+                          ? 'Pages · ${record.attachments.length}'
+                          : 'Previous papers · ${record.attachments.length}',
                     ),
                     const SizedBox(height: 10),
                     GridView.count(
@@ -160,6 +208,60 @@ class ExamDetailPage extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AiAction extends StatelessWidget {
+  const _AiAction({
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+
+  final String title;
+  final String description;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.t;
+    return AppCard(
+      radius: 16,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: k.priC,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: StrokeIcon(AppIcons.sparkle, size: 20, color: k.priInk),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style: TextStyle(fontSize: 12.5, height: 1.35, color: k.tx3),
+                ),
+              ],
+            ),
+          ),
+          StrokeIcon(AppIcons.forward, size: 16, color: k.tx4),
+        ],
       ),
     );
   }

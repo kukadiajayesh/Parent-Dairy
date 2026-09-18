@@ -213,6 +213,58 @@ class ResultDetailPage extends StatelessWidget {
                     _ScoreCard(score: score),
                     const SizedBox(height: 10),
                   ],
+                  if (result.needsReview) ...[
+                    const SizedBox(height: 18),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: k.warnC,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Read by AI — not yet counted',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: k.warnInk,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Check every mark against the card. Confirm to '
+                            'include it in averages and the weak-subject view, '
+                            'or Edit to correct it first.',
+                            style: TextStyle(fontSize: 12.5, height: 1.4, color: k.warnInk2),
+                          ),
+                          const SizedBox(height: 10),
+                          AppFilledButton(
+                            label: 'Confirm these marks',
+                            height: 46,
+                            elevated: false,
+                            color: k.secFill,
+                            hoverColor: k.secFillH,
+                            onPressed: () async {
+                              try {
+                                await state.confirmResult(result.id);
+                                if (!context.mounted) return;
+                                AppToast.show(
+                                  context,
+                                  title: 'Marks confirmed',
+                                  description: '${result.examLabel} now counts.',
+                                );
+                              } catch (error) {
+                                if (!context.mounted) return;
+                                AppToast.failure(context, error, title: "Couldn't confirm");
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   if (result.teacherRemarks.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     const SectionLabel("Teacher's remarks"),

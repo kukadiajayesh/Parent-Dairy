@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/config/grade_scale.dart';
 import '../core/theme/subject_hue.dart';
 import 'models.dart';
+import 'models_ai.dart';
 
 /// Firestore ⇄ model conversion, kept out of `models.dart` so the model file
 /// stays pure Dart — every widget imports it, and none of them should pull in
@@ -198,6 +199,7 @@ abstract final class Map$ {
     'examTimetable': r.examTimetable == null
         ? null
         : attachmentToMap(r.examTimetable!),
+    'origin': r.origin.wire,
     // Denormalised so the upload queue can find stranded records with one
     // query — Firestore cannot filter on a field inside an array of maps.
     'hasPendingUpload': r.sync != SyncState.synced,
@@ -237,6 +239,7 @@ abstract final class Map$ {
       examTimetable: examTimetable is Map
           ? attachmentFrom(Map<String, dynamic>.from(examTimetable))
           : null,
+      origin: RecordOrigin.fromWire(m['origin'] as String?),
       createdAt: date(m['createdAt']),
       updatedAt: date(m['updatedAt']),
       isDeleted: flag(m['isDeleted']),
@@ -360,6 +363,56 @@ abstract final class Map$ {
   static List<String> resultSearchTerms(ExamResult r) {
     final words = <String>{};
     for (final source in [r.examLabel, for (final s in r.scores) s.subject]) {
+      for (final word in source.toLowerCase().split(RegExp(r'[^a-z0-9]+'))) {
+        if (word.length > 1) words.add(word);
+      }
+    }
+    return words.take(40).toList();
+  }
+
+  // ── GeneratedDoc (AI artefacts) ─────────────────────────────────────────
+  static Map<String, dynamic> generatedToMap(GeneratedDoc g) => {
+    'childId': g.childId,
+    'kind': g.kind.wire,
+    'title': g.title,
+    'subject': g.subject,
+    'searchTerms': generatedSearchTerms(g),
+    // Stored as the artefact's own JSON so a schema change in the model
+    // layer never needs a Firestore migration — the reader is defensive.
+    'payload': g.payload,
+    'recordId': g.recordId,
+    'examRecordId': g.examRecordId,
+    'resultId': g.resultId,
+    'model': g.model,
+    'isDeleted': g.isDeleted,
+    'deletedAt': g.deletedAt == null ? null : Timestamp.fromDate(g.deletedAt!),
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
+
+  static GeneratedDoc generatedFrom(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final m = doc.data() ?? const {};
+    final payload = m['payload'];
+    return GeneratedDoc(
+      id: doc.id,
+      childId: str(m['childId']),
+      kind: GeneratedKind.fromWire(m['kind'] as String?),
+      title: str(m['title']),
+      subject: str(m['subject']),
+      payload: payload is Map ? Map<String, Object?>.from(payload) : const {},
+      recordId: m['recordId'] as String?,
+      examRecordId: m['examRecordId'] as String?,
+      resultId: m['resultId'] as String?,
+      model: str(m['model']),
+      createdAt: date(m['createdAt']),
+      updatedAt: date(m['updatedAt']),
+      isDeleted: flag(m['isDeleted']),
+      deletedAt: date(m['deletedAt']),
+    );
+  }
+
+  static List<String> generatedSearchTerms(GeneratedDoc g) {
+    final words = <String>{};
+    for (final source in [g.title, g.subject]) {
       for (final word in source.toLowerCase().split(RegExp(r'[^a-z0-9]+'))) {
         if (word.length > 1) words.add(word);
       }

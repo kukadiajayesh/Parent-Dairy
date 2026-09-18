@@ -1,0 +1,9 @@
+{
+  "answers": [
+    {"number": "1(a)", "answer": "Photosynthesis", "workedSolution": ["Plants use sunlight, water and CO₂.", "They make glucose and oxygen."],
+     "markingScheme": [{"points": 1, "for": "naming the process"}, {"points": 1, "for": "spelling"}],
+     "commonMistakes": ["Writing 'respiration'"], "confidence": 0.95},
+    {"number": "1(b)", "answer": "B — Root", "workedSolution": [], "markingScheme": [{"points": 1, "for": "correct option"}], "commonMistakes": [], "confidence": 0.9},
+    {"number": "", "answer": "orphan entry with no number"}
+  ]
+}

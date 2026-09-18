@@ -9,7 +9,15 @@
 /// ever has to be pulled mid-release.
 const bool kShowExamMarks = true;
 
-/// Master switch for every AI entry point (the Gemini prompt, `02`). Off until
-/// that layer lands; the Performance tab's "Generate practice" action is the
-/// only caller so far and hides behind it.
-const bool kAiEnabled = false;
+/// Compile-time kill switch for the whole AI layer (prompt `02`).
+///
+/// Off, every AI entry point — the More → AI group, "Generate practice",
+/// "Scan paper", "Scan report card", the focus plan — is not built at all,
+/// and the app must still compile and pass its tests. On, the parent still
+/// has to opt in at runtime (`PrefsService.aiEnabled`, default off) and
+/// accept the consent screen before anything leaves the device.
+const bool kAiEnabled = true;
+
+/// Bumped whenever the consent copy changes materially. A parent who accepted
+/// an older version is asked again.
+const int kAiConsentVersion = 1;

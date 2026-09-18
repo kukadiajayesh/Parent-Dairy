@@ -107,5 +107,11 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="*/*"/>
         </intent>
+        <!-- url_launcher: the AI consent and key screens link out to
+             ai.google.dev and aistudio.google.com in the browser. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

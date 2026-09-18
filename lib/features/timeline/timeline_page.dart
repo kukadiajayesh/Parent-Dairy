@@ -16,6 +16,7 @@ import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../ai/ai_widgets.dart';
 import '../children/child_switcher_sheet.dart';
 import '../result/result_card.dart';
 import '../search/search_page.dart';
@@ -503,6 +504,7 @@ class TimelineCard extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 6,
                     children: [
+                      if (record.isAiGenerated) const AiBadge(),
                       if (record.hasAnswerKey)
                         StatusPill(
                           label: 'Answer key',

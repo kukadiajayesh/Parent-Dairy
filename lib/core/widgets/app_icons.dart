@@ -141,6 +141,33 @@ abstract final class AppIcons {
 
   static const trendUp = SvgIcon(['M5 16l5-6 4 3 5-7'], strokeWidth: 2.2);
 
+  // ── AI (prompt 02) — not in the design file; drawn to match the set ─────
+
+  /// Four-point spark with a small companion — every AI entry point.
+  static const sparkle = SvgIcon(
+    [
+      'M12 3.5l1.9 5.6 5.6 1.9-5.6 1.9L12 18.5l-1.9-5.6-5.6-1.9 5.6-1.9z',
+      'M19 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z',
+    ],
+    strokeWidth: 1.8,
+  );
+
+  /// A key on a ring — the API keys list.
+  static const key = SvgIcon(
+    ['M10.5 13.5L19.5 4.5', 'M16 8l2.5 2.5', 'M13.5 10.5l2 2'],
+    circles: [SvgCircle(7.5, 16.5, 3.5)],
+    strokeWidth: 1.9,
+  );
+
+  static const print = SvgIcon(
+    [
+      'M7 9V4h10v5',
+      'M5 9h14a1.5 1.5 0 0 1 1.5 1.5v5H17v-2H7v2H3.5v-5A1.5 1.5 0 0 1 5 9z',
+      'M7 15h10v5H7z',
+    ],
+    strokeWidth: 1.8,
+  );
+
   // ── Bottom navigation ────────────────────────────────────────────────────
   static const navHome =
       SvgIcon(['M4 11l8-6.5 8 6.5v8a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z']);

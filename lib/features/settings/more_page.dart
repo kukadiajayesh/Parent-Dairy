@@ -176,6 +176,22 @@ class _MorePageState extends State<MorePage> {
                         ),
                     ],
                   ),
+                  if (kAiEnabled) ...[
+                    const SizedBox(height: 20),
+                    const SectionLabel('AI'),
+                    const SizedBox(height: 10),
+                    SettingsGroup(
+                      children: [
+                        SettingsRow(
+                          label: 'Gemini AI',
+                          subtitle: 'Practice papers, paper scanning, focus plan',
+                          value: state.aiEnabled ? 'On' : 'Off',
+                          onTap: () => Navigator.of(context, rootNavigator: true)
+                              .pushNamed(Routes.aiSettings),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   const SectionLabel('Account'),
                   const SizedBox(height: 10),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/routes.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
@@ -332,6 +333,17 @@ class _AddResultPageState extends State<AddResultPage> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: ScreenHeader(
                 title: _isEditing ? 'Edit Marks' : 'Add Marks',
+                actions: [
+                  if (!_isEditing && state.aiAvailable)
+                    AppIconButton(
+                      tooltip: 'Scan report card',
+                      background: k.priC,
+                      hoverBackground: k.priCH,
+                      onTap: () => Navigator.of(context)
+                          .pushReplacementNamed(Routes.scanResult),
+                      child: StrokeIcon(AppIcons.camera, size: 19, color: k.priInk),
+                    ),
+                ],
               ),
             ),
             Expanded(

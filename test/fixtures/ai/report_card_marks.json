@@ -1,0 +1,9 @@
+{
+  "examLabel": "Term 1", "date": "2026-09-30", "confidence": 0.88,
+  "attendancePercent": 94, "teacherRemarks": "Aarav is doing well but must revise chapter 4.",
+  "scores": [
+    {"subject": "Maths", "marks": 68, "maxMarks": 100, "grade": "B1", "classRank": null, "remarks": "Revise fractions", "absent": false, "confidence": 0.91},
+    {"subject": "English", "marks": 82, "maxMarks": 100, "grade": "A2", "classRank": 3, "remarks": "", "absent": false, "confidence": 0.95},
+    {"subject": "EVS", "marks": 105, "maxMarks": 100, "grade": null, "classRank": null, "remarks": "", "absent": false, "confidence": 0.6}
+  ]
+}

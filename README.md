@@ -78,17 +78,76 @@ that produced it, verbatim, and the UI shows those rather than paraphrasing.
 `AppState.subjectInsights` memoises the computation against the results,
 records and subjects list identities so reading it from `build()` is free.
 
-`kAiEnabled` (default `false`) hides the "Generate practice" action on a weak
-subject until the Gemini prompt (`02`) wires it.
-
-**Deploying the shape.** The rules now allow `type == 'exam'` records (with an
-`examType` and timetable), add a `results` block, and the indexes file carries
-the four `results` indexes (year-scoped and all-years, with and without
-search). After pulling this change:
+**Deploying the shape.** The rules allow `type == 'exam'` records (with an
+`examType` and a timetable *or* at least one page), carry a `results` block
+and a `generated` block, and the indexes file has the four `results` indexes
+plus one for `generated`. After pulling this change:
 
 ```sh
 firebase deploy --only firestore:rules,firestore:indexes
 ```
+
+## Gemini AI (prompt `02`)
+
+Behind two switches: `kAiEnabled` in `feature_flags.dart` (compile-time kill
+switch, **on**) and **More → AI → Use Gemini AI** (runtime, default off). With
+either off, no AI entry point is built. The first AI action opens a full-screen
+consent explainer (`kAiConsentVersion`; a bump re-asks). The parent supplies
+their own Google AI Studio key — several, if they like.
+
+| Feature | Entry point | Screen |
+| --- | --- | --- |
+| Keys, models, activity log, consent, revoke | More → AI | `ai_settings_page.dart` |
+| Practice paper / quiz / worksheet / flashcards / notes | Subject header, weak-subject card, Add sheet, worksheet detail ("similar worksheet") | `generate_paper_page.dart` → `generate_progress_page.dart` → `paper_preview_page.dart` |
+| Scan an exam paper into questions | Add sheet → Scan exam paper | `scan_paper_page.dart` → exam detail |
+| Answer key from the scanned questions | Exam detail → From the scan | `answer_key_page.dart` |
+| Grade a completed paper, save as a result | Exam detail → Grade this paper | `grade_paper_page.dart` |
+| Report card → `ExamResult` (needs review) | Add marks header, shared image → "Scan as report card" | `scan_result_page.dart` |
+| Focus plan (explains the deterministic verdict) | Performance → Needs attention → Focus plan | `focus_plan_page.dart` |
+
+**Keys** live in the platform keystore (`flutter_secure_storage`, one JSON
+blob under `ai.keys.v1`), never in preferences, Firestore or a log line, and
+are sent only in the `x-goog-api-key` header. A key is stored only after
+`GET /v1beta/models` answered 200 with it. Rotation: first healthy key in the
+parent's order; a 429 puts the key on cooldown until the next UTC midnight and
+the next key takes over; 400/403 marks the key invalid and names it in the
+error; 500/503 backs off 250 ms / 1 s / 3 s on the same key, then fails over.
+Every key exhausted is `FailureKind.quota` with a "try after midnight UTC"
+message.
+
+**Client** (`core/services/ai/gemini_client.dart`) is raw REST against
+`v1beta` — no SDK, because the parent's own key has no `firebase_ai` path.
+Every call sets `responseMimeType: application/json` and a schema from
+`gemini_schemas.dart`; a malformed reply gets one text-only repair pass.
+`SAFETY`, `RECITATION` and `MAX_TOKENS` are distinct failures. Images are
+downscaled to 1600 px / q75 (EXIF dropped) and sent inline up to 6 MB; larger
+images and every PDF go through the Files API, cached per attachment *and
+key* for 47 h. Caps: 12 images, 40 PDF pages, 20 MB; over six images the app
+counts tokens and asks first. Every long call has a Cancel that closes the
+socket. Offline short-circuits before any request.
+
+**Privacy.** Prompts carry the grade and "the student" — never the name,
+school, GR/roll number or date of birth (`ai_redaction.dart`, asserted in
+debug on every request and in `ai_redaction_test.dart`). The activity log
+(last 100 calls, in preferences) records feature, model, key label, token
+counts, duration and outcome — never content. Telemetry gets feature, model
+and failure kind only. **Revoke** wipes keys, cached file URIs, the log,
+consent and the switch.
+
+**What the model never does.** It never decides who is weak — that stays
+`subject_insights.dart`, and the focus plan only explains its output. It
+never writes to Firestore: every extraction lands on a review screen and the
+parent confirms. A scanned result is saved `needsReview: true`, drawn with a
+dotted border, and excluded from `subjectInsights` until confirmed. AI
+worksheets are normal `DiaryRecord`s with `origin: ai` (badged "AI") and a
+PDF (`paper_pdf.dart`, Figtree embedded); the structured JSON sits beside
+them in `users/{uid}/children/{childId}/generated`.
+
+**Models** default to `gemini-3.8-flash` (generation, vision),
+`gemini-3.5-flash-lite` (classification, for prompt `03`) and
+`gemini-2.5-pro` (best quality). The settings picker is populated from the
+live `models.list` (cached 24 h); the constants in `ai_models.dart` are only
+the fallback and were checked against ai.google.dev on 19 Sep 2026.
 
 ## Structure
 
@@ -96,23 +155,27 @@ firebase deploy --only firestore:rules,firestore:indexes
 lib/
   app/            MaterialApp, theme wiring, root route table, startup error
   core/
-    config/       kShowExamMarks, kAiEnabled, GradeScale
+    config/       kShowExamMarks, kAiEnabled, kAiConsentVersion, GradeScale
     errors/       AppFailure — every SDK exception mapped to parent-readable text
     services/     auth-adjacent platform work: prefs, connectivity, images,
                   attachment actions, notifications, share intents, telemetry
+    services/ai/  Gemini: key store, REST client, schemas, prompts, redaction,
+                  attachment prep, activity log, subject matcher, paper PDF
     theme/        design tokens (light + dark), ThemeData, subject hues
     widgets/      buttons, chips, fields, cards, sheets, toast, states,
                   ImageSlot, and a small SVG path renderer for the icon set
   data/
     models.dart          pure Dart, no Firebase import — every widget uses it
+    models_ai.dart       GeneratedPaper, ScannedPaper, AnswerKey, GradedPaper,
+                         ReportCardExtraction, FocusPlan, GeneratedDoc — pure Dart
     mappers.dart         Firestore ⇄ model conversion
     firestore_paths.dart every collection path in one place
     analytics/           subject_insights.dart — the weak-subject rule, pure Dart
-    repositories/        auth, child, subject, year, record, result, attachment,
-                         uploads
+    repositories/        auth, child, subject, year, record, result, generated,
+                         attachment, uploads
     app_state.dart       the one ChangeNotifier the screens read
   features/       one directory per screen family (performance/ and result/
-                  are the marks screens)
+                  are the marks screens; ai/ holds every Gemini screen)
   shell/          four-tab frame (Home / Timeline / Performance / More) and
                   the Add sheet
 ```
@@ -166,7 +229,7 @@ cannot start.
 flutter test
 ```
 
-173 tests, no network:
+226 tests, no network:
 
 | File | Covers |
 | --- | --- |
@@ -179,6 +242,14 @@ flutter test
 | `app_state_test.dart` | auth gating, first-child seeding, record lifecycle, year switching, offline banner, result lifecycle, year-by-date filing, duplicate detection, insight memoisation, grade scale |
 | `upload_queue_test.dart` | a failed upload reports `failed` rather than idle, bounded retries, offline waiting |
 | `app_smoke_test.dart` | the real screens over a fake Firestore: the Performance tab and its weak-subject card in both themes at phone width, marks entry end to end, browse thumbnails render their attachment, and the skeletons fit a real phone width |
+| `gemini_key_store_test.dart` | rotation order, reorder, 429 cooldown to UTC midnight, invalid key skipped, monthly counts, persistence, the secret never in `toString` or `masked` |
+| `gemini_client_test.dart` | with a mocked `http.Client`: schema parse, malformed-JSON repair, SAFETY / RECITATION / MAX_TOKENS, timeout, cancellation, 503 backoff and fail-over, 429 cooldown, all-exhausted → quota, invalid key named, 404 model, offline short-circuit, resumable upload with the 47 h cache, `countTokens`, key verification, secret redacted from error bodies |
+| `ai_redaction_test.dart` | every prompt built from a fully-populated child carries none of its identifiers; `scrub` on free text |
+| `paper_pdf_test.dart` | a fixture paper renders with and without the key, Figtree embedded; a scanned paper's answer key renders |
+| `models_ai_test.dart` | eight fixture replies under `test/fixtures/ai/` — a clean paper, one with unparsable questions, a scanned paper, an answer key, a graded paper (clamped), a marks card, a grades-only card, an absent row, a focus plan — plus the `generated` mapper and record `origin` |
+| `generated_repository_test.dart` | save, link, watch newest-first, soft delete, validation |
+| `subject_matcher_test.dart` | "Maths" → Mathematics, "EVS" → Environmental Studies, typos, unknowns |
+| `ai_settings_test.dart` | settings with zero keys shows the empty state; the switch persists; with AI off no entry point is reachable from Home, Subject, Performance or the Add sheet; with it on they appear |
 
 Two of those exist because the first device run found what the suite had missed.
 The viewport is pinned to 411.4dp — at the 432dp it used to use, a horizontal
@@ -211,9 +282,12 @@ layout, not assertions.
 
 ## Not yet wired
 
-- "Generate practice" on a weak subject, report-card scanning and every other
-  AI action — prompt `02`, behind `kAiEnabled`. `ResultSource.scanned` and
-  `needsReview` are on the model so those documents already parse.
+- Notification capture and classification (prompt `03`); the
+  `classification` model slot in AI settings is reserved for it.
+- The generated-paper PDF embeds Figtree only, so Hindi and Gujarati papers
+  render fully on screen but print those glyphs as boxes — bundling Noto
+  Devanagari/Gujarati is the follow-up. LaTeX in `$…$` is shown verbatim,
+  not rendered.
 - iOS share extension. The Android share intent is complete; `receive_sharing_intent`
   needs a separate extension target for iOS.
 - Server-sent push. `firebaseMessagingBackgroundHandler` is registered and the

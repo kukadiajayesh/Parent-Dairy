@@ -3,7 +3,12 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../core/config/feature_flags.dart';
 import '../core/errors/app_failure.dart';
+import '../core/services/ai/ai_activity_log.dart';
+import '../core/services/ai/ai_service.dart';
+import '../core/services/ai/gemini_client.dart';
+import '../core/services/ai/gemini_key_store.dart';
 import '../core/services/connectivity_service.dart';
 import '../core/services/image_service.dart';
 import '../core/services/notification_service.dart';
@@ -13,9 +18,11 @@ import '../core/config/grade_scale.dart';
 import '../core/theme/subject_hue.dart';
 import 'analytics/subject_insights.dart';
 import 'models.dart';
+import 'models_ai.dart';
 import 'repositories/attachment_repository.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/child_repository.dart';
+import 'repositories/generated_repository.dart';
 import 'repositories/record_repository.dart';
 import 'repositories/result_repository.dart';
 import 'repositories/subject_repository.dart';
@@ -68,16 +75,22 @@ class AppState extends ChangeNotifier {
     YearRepository years = const YearRepository(),
     RecordRepository records = const RecordRepository(),
     ResultRepository results = const ResultRepository(),
+    GeneratedRepository generated = const GeneratedRepository(),
     AttachmentRepository? attachments,
     ConnectivityService? connectivity,
+    GeminiKeyStore? aiKeys,
+    AiService? ai,
   }) : _auth = auth ?? AuthRepository(),
        _childRepo = children,
        _subjectRepo = subjects,
        _yearRepo = years,
        _recordRepo = records,
        _resultRepo = results,
+       _generatedRepo = generated,
        _attachmentRepo = attachments ?? AttachmentRepository(),
-       _connectivity = connectivity ?? ConnectivityService() {
+       _connectivity = connectivity ?? ConnectivityService(),
+       _aiKeysOverride = aiKeys,
+       _aiOverride = ai {
     uploads = UploadQueue(
       attachments: _attachmentRepo,
       records: _recordRepo,
@@ -93,8 +106,11 @@ class AppState extends ChangeNotifier {
   final YearRepository _yearRepo;
   final RecordRepository _recordRepo;
   final ResultRepository _resultRepo;
+  final GeneratedRepository _generatedRepo;
   final AttachmentRepository _attachmentRepo;
   final ConnectivityService _connectivity;
+  final GeminiKeyStore? _aiKeysOverride;
+  final AiService? _aiOverride;
 
   late final UploadQueue uploads;
 
@@ -104,6 +120,63 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<Subject>>? _subjectsSub;
   StreamSubscription<List<DiaryRecord>>? _recordsSub;
   StreamSubscription<List<ExamResult>>? _resultsSub;
+  StreamSubscription<List<GeneratedDoc>>? _generatedSub;
+
+  // ── AI (prompt 02) ───────────────────────────────────────────────────────
+  //
+  // Built lazily: the key store touches the platform keystore and the log
+  // needs preferences, neither of which a unit test constructing AppState
+  // wants on the first line. Everything AI is reached through these three.
+
+  late final GeminiKeyStore aiKeys = _aiKeysOverride ?? GeminiKeyStore();
+
+  late final AiActivityLog aiLog = AiActivityLog(PrefsService.instance.raw);
+
+  late final AiService ai =
+      _aiOverride ??
+      AiService(
+        client: GeminiClient(
+          keys: aiKeys,
+          offline: _connectivity.offline,
+          fileCache: GeminiFileCache(PrefsService.instance.raw),
+        ),
+        log: aiLog,
+        modelFor: PrefsService.instance.aiModelFor,
+      );
+
+  /// The parent's runtime opt-in (More → AI → Use Gemini AI).
+  bool get aiEnabled => kAiEnabled && PrefsService.instance.aiEnabled;
+
+  Future<void> setAiEnabled(bool value) async {
+    await PrefsService.instance.setAiEnabled(value);
+    if (value && !aiKeys.isLoaded) unawaited(aiKeys.load());
+    notifyListeners();
+  }
+
+  bool get aiConsented => PrefsService.instance.aiConsented;
+  DateTime? get aiConsentedAt => PrefsService.instance.aiConsentedAt;
+
+  Future<void> setAiConsented(bool value) async {
+    await PrefsService.instance.setAiConsented(value);
+    notifyListeners();
+  }
+
+  /// Whether an AI entry point should be shown: the build has the layer,
+  /// the parent switched it on. Consent is asked at the first action, not
+  /// here, so a parent can find the feature before agreeing to it.
+  bool get aiAvailable => aiEnabled;
+
+  /// Ready to actually call: switched on, consented, and at least one key.
+  bool get aiReady => aiAvailable && aiConsented && aiKeys.keys.isNotEmpty;
+
+  /// "Revoke" in AI settings: keys, cached file URIs, the activity log,
+  /// consent and the switch — all of it, in one go.
+  Future<void> revokeAi() async {
+    await aiKeys.clear();
+    await aiLog.clear();
+    await PrefsService.instance.clearAiScoped();
+    notifyListeners();
+  }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -111,6 +184,13 @@ class AppState extends ChangeNotifier {
   /// `Firebase.initializeApp`.
   Future<void> bootstrap() async {
     await _connectivity.start();
+    if (aiEnabled) {
+      // Keys are only needed once the parent has opted in; loading them
+      // eagerly on a phone that never uses AI is a keystore prompt for
+      // nothing.
+      unawaited(aiKeys.load());
+    }
+    aiKeys.addListener(notifyListeners);
     _authSub = _auth.authStateChanges().listen(_onUserChanged);
     // authStateChanges fires immediately with the restored session, but a cold
     // start with no cached user emits null and would leave status unknown.
@@ -156,6 +236,7 @@ class AppState extends ChangeNotifier {
     _subjects = const [];
     _records = const [];
     _results = const [];
+    _generated = const [];
     _allYearResults = null;
     _years = const [];
     _childId = null;
@@ -251,6 +332,17 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }, onError: _onStreamError);
 
+    _generatedSub?.cancel();
+    _generated = const [];
+    if (kAiEnabled) {
+      _generatedSub = _generatedRepo
+          .watch(uid: uid, childId: childId)
+          .listen((value) {
+            _generated = value;
+            notifyListeners();
+          }, onError: _onStreamError);
+    }
+
     _resubscribeChildYearScoped();
     unawaited(uploads.resume(uid: uid, childId: childId));
   }
@@ -309,11 +401,13 @@ class AppState extends ChangeNotifier {
     _subjectsSub?.cancel();
     _recordsSub?.cancel();
     _resultsSub?.cancel();
+    _generatedSub?.cancel();
     _childrenSub = null;
     _yearsSub = null;
     _subjectsSub = null;
     _recordsSub = null;
     _resultsSub = null;
+    _generatedSub = null;
   }
 
   bool _loadingRecords = false;
@@ -845,6 +939,273 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// Marks a scanned result as checked. Editing and saving does the same
+  /// through [saveResult]; this is the one-tap version on the detail screen.
+  Future<void> confirmResult(String id) async {
+    final result = resultById(id);
+    if (result == null || !result.needsReview) return;
+    await saveResult(result.copyWith(needsReview: false));
+  }
+
+  // ── AI artefacts (prompt 02) ─────────────────────────────────────────────
+  List<GeneratedDoc> _generated = const [];
+
+  /// Every structured AI artefact for the active child, newest first.
+  List<GeneratedDoc> get generated => List.unmodifiable(_generated);
+
+  GeneratedDoc? generatedById(String id) =>
+      _generated.where((g) => g.id == id).firstOrNull;
+
+  /// The artefacts filed under a record: a scanned paper, its answer key,
+  /// its grading.
+  List<GeneratedDoc> generatedForRecord(String recordId) => _generated
+      .where((g) => g.recordId == recordId || g.examRecordId == recordId)
+      .toList();
+
+  GeneratedDoc? scannedPaperFor(String recordId) => generatedForRecord(recordId)
+      .where((g) => g.kind == GeneratedKind.scannedPaper)
+      .firstOrNull;
+
+  /// Chapters seen on this year's records, per subject — the generator's
+  /// fallback when a subject has no focus chapters.
+  Map<String, List<String>> get chaptersBySubject {
+    final out = <String, Set<String>>{};
+    for (final r in _records) {
+      out.putIfAbsent(r.subject, () => {}).addAll(r.chapters);
+    }
+    return {
+      for (final e in out.entries) e.key: (e.value.toList()..sort()),
+    };
+  }
+
+  /// The last [limit] worksheet/classwork records for a subject, preferring
+  /// those tagged with any of [chapters] — the generator's default sources.
+  List<DiaryRecord> sourceRecordsFor(
+    String subject, {
+    List<String> chapters = const [],
+    int limit = 8,
+  }) {
+    final candidates = _records
+        .where(
+          (r) =>
+              r.subject == subject &&
+              !r.isExam &&
+              r.attachments.isNotEmpty,
+        )
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    if (chapters.isEmpty) return candidates.take(limit).toList();
+    final tagged = candidates
+        .where((r) => r.chapters.any(chapters.contains))
+        .toList();
+    final rest = candidates.where((r) => !tagged.contains(r)).toList();
+    return [...tagged, ...rest].take(limit).toList();
+  }
+
+  Future<GeneratedDoc> _saveGenerated(GeneratedDoc doc) async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null) {
+      throw const AppFailure(
+        FailureKind.sessionExpired,
+        'Please sign in again to save this.',
+      );
+    }
+    return _generatedRepo.save(uid: uid, childId: childId, doc: doc);
+  }
+
+  /// Files a generated paper as a real worksheet record with its PDF, and
+  /// keeps the structured JSON beside it. Returns the record.
+  Future<DiaryRecord> saveGeneratedPaper({
+    required GeneratedPaper paper,
+    required PaperConfig config,
+    required List<int> pdfBytes,
+  }) async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null) {
+      throw const AppFailure(
+        FailureKind.sessionExpired,
+        'Please sign in again to save this paper.',
+      );
+    }
+    final safeTitle = paper.title
+        .replaceAll(RegExp(r'[^A-Za-z0-9 _-]+'), '')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '-');
+    final pdf = await ImageService.stageBytes(
+      pdfBytes,
+      '${safeTitle.isEmpty ? 'practice' : safeTitle}.pdf',
+    );
+    final doc = await _saveGenerated(
+      GeneratedDoc(
+        id: '',
+        childId: childId,
+        kind: GeneratedKind.paper,
+        title: paper.title,
+        subject: config.subject,
+        payload: {...paper.toJson(), 'config': config.toJson()},
+        model: paper.model,
+      ),
+    );
+    final record = await saveRecord(
+      DiaryRecord(
+        id: '',
+        type: RecordType.worksheet,
+        subject: config.subject,
+        title: paper.title,
+        date: DateTime.now(),
+        chapters: config.chapters,
+        notes: 'AI-generated ${config.output.label.toLowerCase()} '
+            '(${paper.model}). Check the questions before use.',
+        origin: RecordOrigin.ai,
+      ),
+      newFiles: [pdf],
+    );
+    unawaited(
+      _generatedRepo.link(
+        uid: uid,
+        childId: childId,
+        generatedId: doc.id,
+        recordId: record.id,
+      ),
+    );
+    return record;
+  }
+
+  /// Files a scanned exam paper: an exam record carrying the page images,
+  /// plus the structured questions beside it.
+  Future<({DiaryRecord record, GeneratedDoc doc})> saveScannedPaper({
+    required ScannedPaper paper,
+    required List<PickedAttachment> pages,
+    required String subject,
+    required String examType,
+    required DateTime date,
+  }) async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null) {
+      throw const AppFailure(
+        FailureKind.sessionExpired,
+        'Please sign in again to save this paper.',
+      );
+    }
+    final record = await saveRecord(
+      DiaryRecord(
+        id: '',
+        type: RecordType.exam,
+        subject: subject,
+        title: '$examType · $subject',
+        date: date,
+        examType: examType,
+        notes: 'Scanned exam paper · ${paper.questions.length} questions read by '
+            '${paper.model}.',
+        origin: RecordOrigin.ai,
+      ),
+      newFiles: pages,
+    );
+    final doc = await _saveGenerated(
+      GeneratedDoc(
+        id: '',
+        childId: childId,
+        kind: GeneratedKind.scannedPaper,
+        title: '$examType · $subject',
+        subject: subject,
+        payload: paper.toJson(),
+        recordId: record.id,
+        examRecordId: record.id,
+        model: paper.model,
+      ),
+    );
+    return (record: record, doc: doc);
+  }
+
+  /// Attaches an AI answer key PDF to an exam record and keeps its JSON.
+  Future<void> saveAnswerKey({
+    required DiaryRecord record,
+    required ScannedPaper paper,
+    required AnswerKey key,
+    required List<int> pdfBytes,
+  }) async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null) {
+      throw const AppFailure(
+        FailureKind.sessionExpired,
+        'Please sign in again to save this answer key.',
+      );
+    }
+    final pdf = await ImageService.stageBytes(pdfBytes, 'answer-key-ai.pdf');
+    await saveRecord(record, newAnswerKey: pdf);
+    await _saveGenerated(
+      GeneratedDoc(
+        id: '',
+        childId: childId,
+        kind: GeneratedKind.answerKey,
+        title: 'Answer key · ${record.title}',
+        subject: record.subject,
+        payload: key.toJson(),
+        recordId: record.id,
+        examRecordId: record.id,
+        model: key.model,
+      ),
+    );
+  }
+
+  /// Saves a grading as an [ExamResult] (`scanned`, `needsReview`) linked to
+  /// the exam record, and keeps the per-question breakdown beside it.
+  Future<ExamResult> saveGradedPaper({
+    required DiaryRecord record,
+    required GradedPaper graded,
+    required String examLabel,
+  }) async {
+    final uid = _auth.uid;
+    final childId = _childId;
+    if (uid == null || childId == null) {
+      throw const AppFailure(
+        FailureKind.sessionExpired,
+        'Please sign in again to save this result.',
+      );
+    }
+    final result = await saveResult(
+      ExamResult(
+        id: '',
+        childId: childId,
+        academicYearId: '',
+        examLabel: examLabel,
+        date: record.date,
+        examRecordId: record.id,
+        scores: [
+          SubjectScore(
+            subject: record.subject,
+            marks: graded.awarded,
+            maxMarks: graded.outOf,
+            remarks: 'Graded by AI from a scanned paper · check before relying on it',
+          ),
+        ],
+        source: ResultSource.scanned,
+        extractionConfidence: 0.7,
+        needsReview: true,
+        gradeScaleId: gradeScale.id,
+      ),
+    );
+    await _saveGenerated(
+      GeneratedDoc(
+        id: '',
+        childId: childId,
+        kind: GeneratedKind.gradedPaper,
+        title: 'Grading · ${record.title}',
+        subject: record.subject,
+        payload: graded.toJson(),
+        recordId: record.id,
+        examRecordId: record.id,
+        resultId: result.id,
+        model: graded.model,
+      ),
+    );
+    return result;
+  }
+
   // ── Weak-subject analytics ───────────────────────────────────────────────
 
   /// Every year's results, fetched once per child when the parent asks for
@@ -915,7 +1276,9 @@ class AppState extends ChangeNotifier {
     _memoSubjects = _subjects;
     _memoChildName = childName;
     _memoInsights = computeSubjectInsights(
-      results: inputs,
+      // A scanned card the parent has not confirmed is shown, dotted, but
+      // never counted: a wrong mark is worse than no mark.
+      results: inputs.where((r) => !r.needsReview).toList(),
       records: _records,
       subjects: subjectNames,
       childName: childName.isEmpty || childName == '—' ? 'your child' : childName,
@@ -1039,6 +1402,7 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _authSub?.cancel();
     _cancelDataSubscriptions();
+    aiKeys.removeListener(notifyListeners);
     _connectivity.offline.removeListener(_onConnectivityChanged);
     uploads.removeListener(notifyListeners);
     uploads.dispose();

@@ -247,7 +247,9 @@ class RecordRepository {
           canRetry: false,
         );
       }
-      if (record.examTimetable == null) {
+      // A hand-entered exam is its timetable; a scanned paper (prompt 02)
+      // has no timetable but does have its pages. Either makes it renderable.
+      if (record.examTimetable == null && record.attachments.isEmpty) {
         throw const AppFailure(
           FailureKind.invalidFile,
           'Attach the exam timetable before saving.',

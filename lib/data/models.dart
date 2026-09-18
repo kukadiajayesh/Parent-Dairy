@@ -35,6 +35,26 @@ const List<String> kChapterOptions = [
   'Chapter 10',
 ];
 
+/// How a record came to exist. Persisted so the timeline can badge
+/// AI-generated material and so an old document (no field) still reads as
+/// manual.
+enum RecordOrigin {
+  manual('manual'),
+  share('share'),
+  ai('ai'),
+  notification('notification');
+
+  const RecordOrigin(this.wire);
+  final String wire;
+
+  static RecordOrigin fromWire(String? value) => switch (value) {
+    'share' => RecordOrigin.share,
+    'ai' => RecordOrigin.ai,
+    'notification' => RecordOrigin.notification,
+    _ => RecordOrigin.manual,
+  };
+}
+
 enum WorksheetStatus {
   pending('Pending', 'pending'),
   completed('Completed', 'completed');
@@ -340,6 +360,7 @@ class DiaryRecord {
     this.hardWords,
     this.examType = '',
     this.examTimetable,
+    this.origin = RecordOrigin.manual,
     this.createdAt,
     this.updatedAt,
     this.isDeleted = false,
@@ -391,6 +412,11 @@ class DiaryRecord {
   /// the add-exam UI).
   final Attachment? examTimetable;
 
+  /// Where the record came from. `ai` records carry an "AI" badge wherever
+  /// they are listed, and their attachments are model output the parent has
+  /// been told to check.
+  final RecordOrigin origin;
+
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -401,6 +427,7 @@ class DiaryRecord {
 
   bool get isWorksheet => type == RecordType.worksheet;
   bool get isExam => type == RecordType.exam;
+  bool get isAiGenerated => origin == RecordOrigin.ai;
 
   bool get hasAnswerKey => answerKey != null;
   bool get hasHardWords => hardWords != null;
@@ -464,6 +491,7 @@ class DiaryRecord {
     Attachment? hardWords,
     String? examType,
     Attachment? examTimetable,
+    RecordOrigin? origin,
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
@@ -495,6 +523,7 @@ class DiaryRecord {
     examTimetable: clearExamTimetable
         ? null
         : (examTimetable ?? this.examTimetable),
+    origin: origin ?? this.origin,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     isDeleted: isDeleted ?? this.isDeleted,

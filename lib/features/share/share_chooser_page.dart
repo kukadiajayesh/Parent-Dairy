@@ -6,6 +6,7 @@ import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/pressable.dart';
 import '../../core/widgets/stroke_icon.dart';
+import '../../data/app_state.dart';
 import 'attach_answer_key_page.dart';
 import 'share_image_page.dart';
 
@@ -24,6 +25,7 @@ class ShareChooserPage extends StatelessWidget {
     // An answer key is a single attachment; a multi-file share can only be a
     // new record.
     final canAttachToExisting = args.files.length == 1;
+    final canScanCard = AppScope.of(context).aiAvailable;
 
     return Scaffold(
       backgroundColor: k.bg,
@@ -73,6 +75,21 @@ class ShareChooserPage extends StatelessWidget {
                           settings:
                               const RouteSettings(name: Routes.attachAnswerKey),
                         ),
+                      ),
+                    ),
+                  ],
+                  if (canScanCard) ...[
+                    const SizedBox(height: 12),
+                    _ChoiceCard(
+                      title: 'Scan as report card',
+                      description:
+                          'Read the marks with Gemini and save them for review',
+                      icon: AppIcons.sparkle,
+                      tint: k.subHinC,
+                      ink: k.subHinInk,
+                      onTap: () => Navigator.of(context).pushReplacementNamed(
+                        Routes.scanResult,
+                        arguments: args.files,
                       ),
                     ),
                   ],

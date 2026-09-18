@@ -1,0 +1,8 @@
+{
+  "examLabel": "Half Yearly", "date": null, "confidence": 0.7,
+  "attendancePercent": null, "teacherRemarks": "",
+  "scores": [
+    {"subject": "Mathematics", "marks": null, "maxMarks": null, "grade": "A1", "remarks": "", "absent": false, "confidence": 0.9},
+    {"subject": "Hindi", "marks": null, "maxMarks": null, "grade": "B2", "remarks": "", "absent": false, "confidence": 0.85}
+  ]
+}

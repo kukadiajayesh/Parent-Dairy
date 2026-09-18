@@ -11,11 +11,13 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/sheets.dart';
-import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../core/widgets/toast.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../../data/models_ai.dart';
+import '../ai/ai_widgets.dart';
+import '../ai/generate_paper_page.dart';
 import '../picker/attachment_source_row.dart';
 import '../picker/picker_page.dart';
 import '../viewer/viewer_page.dart';
@@ -147,6 +149,20 @@ class _WorksheetDetailPageState extends State<WorksheetDetailPage> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: ScreenHeader(
                 actions: [
+                  if (state.aiAvailable && record.attachments.isNotEmpty)
+                    AppIconButton(
+                      tooltip: 'Make a similar worksheet',
+                      onTap: () => Navigator.of(context).pushNamed(
+                        Routes.aiGenerate,
+                        arguments: GenerateArgs(
+                          subject: record.subject,
+                          chapters: record.chapters,
+                          output: PaperOutput.worksheet,
+                          sourceRecordIds: [record.id],
+                        ),
+                      ),
+                      child: StrokeIcon(AppIcons.sparkle, size: 19, color: k.priInk),
+                    ),
                   AppIconButton(
                     tooltip: 'Share',
                     onTap: share,
@@ -178,6 +194,7 @@ class _WorksheetDetailPageState extends State<WorksheetDetailPage> {
                     runSpacing: 8,
                     children: [
                       SubjectTag(name: record.subject, hue: subject.hue),
+                      if (record.isAiGenerated) const AiBadge(label: 'AI-generated'),
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,

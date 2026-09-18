@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 /// users/{uid}/children/{childId}/subjects/{subjectId}
 /// users/{uid}/children/{childId}/records/{recordId}
 /// users/{uid}/children/{childId}/results/{resultId}
+/// users/{uid}/children/{childId}/generated/{generatedId}
 /// ```
 ///
 /// Two deliberate choices against the spec's sketch:
@@ -68,6 +69,15 @@ abstract final class Paths {
     String uid,
     String childId,
   ) => child(uid, childId).collection('results');
+
+  /// Structured AI output — a generated practice paper, a scanned exam
+  /// paper's questions, an answer key, a graded paper. Kept beside the record
+  /// it produced rather than inside it: the JSON for a 40-question paper is
+  /// far too large to ride along on every timeline read.
+  static CollectionReference<Map<String, dynamic>> generated(
+    String uid,
+    String childId,
+  ) => child(uid, childId).collection('generated');
 
   /// Storage layout from §33. Files are namespaced by record so deleting a
   /// record can drop its whole folder, and never land in a shared bucket root.

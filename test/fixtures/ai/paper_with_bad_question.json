@@ -1,0 +1,17 @@
+{
+  "title": "Science quiz",
+  "subject": "Science", "grade": "Class 5",
+  "durationMinutes": 20,
+  "sections": [
+    {
+      "name": "Quiz",
+      "questions": [
+        {"number": 1, "type": "mcq", "text": "Which gas do plants take in?",
+         "options": ["Oxygen", "Carbon dioxide", "Nitrogen", "Helium"], "answer": "B", "marks": 1},
+        {"number": 2, "type": "mcq", "text": "", "options": [], "answer": "", "marks": 1},
+        {"number": "three", "type": "weird", "text": "Name one part of a plant.", "marks": "2", "options": null},
+        {"garbage": true}
+      ]
+    }
+  ]
+}

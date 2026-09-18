@@ -8,12 +8,14 @@ import '../core/widgets/layout.dart';
 import '../core/widgets/pressable.dart';
 import '../core/widgets/sheets.dart';
 import '../core/widgets/stroke_icon.dart';
+import '../data/app_state.dart';
 
 /// "Add to diary" sheet: the highlighted From-Image entry point plus one row
 /// per record type. Exam and Marks rows are gated on [kShowExamMarks].
 abstract final class AddSheet {
   static Future<void> show(BuildContext context) async {
     final navigator = Navigator.of(context, rootNavigator: true);
+    final aiAvailable = AppScope.read(context).aiAvailable;
     await AppSheet.show(context, (sheetContext) {
       final k = sheetContext.t;
       void go(String route) {
@@ -63,6 +65,26 @@ abstract final class AddSheet {
                 tint: k.subHinC,
                 ink: k.subHinInk,
                 onTap: () => go(Routes.addResult),
+              ),
+            ],
+            if (aiAvailable) ...[
+              const SizedBox(height: 8),
+              _AddRow(
+                title: 'AI practice paper',
+                description: 'Questions from your child\'s own worksheets',
+                abbr: 'AI',
+                tint: k.priC,
+                ink: k.priInk,
+                onTap: () => go(Routes.aiGenerate),
+              ),
+              const SizedBox(height: 8),
+              _AddRow(
+                title: 'Scan exam paper',
+                description: 'Read a paper into questions, key and marks',
+                abbr: 'SC',
+                tint: k.subComC,
+                ink: k.subComInk,
+                onTap: () => go(Routes.scanPaper),
               ),
             ],
           ],

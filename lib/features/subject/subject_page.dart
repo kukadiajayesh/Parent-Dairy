@@ -5,6 +5,7 @@ import '../../core/config/feature_flags.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/attachment_image.dart';
+import '../../core/widgets/buttons.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
@@ -14,6 +15,8 @@ import '../../core/widgets/stroke_icon.dart';
 import '../../data/analytics/subject_insights.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../ai/ai_widgets.dart';
+import '../ai/generate_paper_page.dart';
 import '../performance/charts.dart';
 import '../performance/insight_widgets.dart';
 import '../worksheet/worksheets_list_page.dart';
@@ -72,7 +75,26 @@ class _SubjectPageState extends State<SubjectPage> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: ScreenHeader(title: subject.name),
+              child: ScreenHeader(
+                title: subject.name,
+                actions: [
+                  if (state.aiAvailable)
+                    AppIconButton(
+                      tooltip: 'Generate practice',
+                      background: k.priC,
+                      hoverBackground: k.priCH,
+                      onTap: () => Navigator.of(context, rootNavigator: true)
+                          .pushNamed(
+                            Routes.aiGenerate,
+                            arguments: GenerateArgs(
+                              subject: subject.name,
+                              chapters: insight?.focusChapters,
+                            ),
+                          ),
+                      child: StrokeIcon(AppIcons.sparkle, size: 20, color: k.priInk),
+                    ),
+                ],
+              ),
             ),
             Expanded(
               child: ListView(
@@ -623,6 +645,10 @@ class _RecordList extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
+                if (record.isAiGenerated) ...[
+                  const AiBadge(),
+                  const SizedBox(width: 6),
+                ],
                 if (record.isWorksheet)
                   StatusPill(
                     label: record.status == WorksheetStatus.completed

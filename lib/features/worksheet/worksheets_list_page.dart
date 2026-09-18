@@ -13,6 +13,7 @@ import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+import '../ai/ai_widgets.dart';
 import '../search/search_page.dart';
 import '../subject/subject_page.dart';
 
@@ -252,6 +253,7 @@ class _WorksheetRow extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 6,
                     children: [
+                      if (record.isAiGenerated) const AiBadge(),
                       StatusPill(
                         label: record.status.label,
                         background: completed ? k.subSciC : k.warnC,

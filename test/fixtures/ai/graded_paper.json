@@ -1,0 +1,9 @@
+{
+  "questions": [
+    {"number": "1(a)", "awarded": 2, "outOf": 2, "verdict": "correct", "reason": "Correct term.", "topic": "Photosynthesis"},
+    {"number": "1(b)", "awarded": 1, "outOf": 1, "verdict": "correct", "reason": "Root is right.", "topic": "Plant parts"},
+    {"number": "2", "awarded": 0, "outOf": 5, "verdict": "blank", "reason": "Nothing drawn.", "topic": "Leaf structure"},
+    {"number": "3", "awarded": 9, "outOf": 5, "verdict": "correct", "reason": "over-awarded by the model", "topic": ""},
+    {"number": "4", "awarded": 1, "outOf": 0, "verdict": "partial", "reason": "bad outOf", "topic": ""}
+  ]
+}

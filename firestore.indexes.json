@@ -81,6 +81,15 @@
       ]
     },
     {
+      "//": "AI artefacts for a child, newest first (prompt 02).",
+      "collectionGroup": "generated",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "//": "Child list, oldest first, excluding soft-deleted profiles.",
       "collectionGroup": "children",
       "queryScope": "COLLECTION",

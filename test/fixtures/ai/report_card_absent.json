@@ -1,0 +1,8 @@
+{
+  "examLabel": "Unit Test 2", "date": "2026-08-12", "confidence": 0.8,
+  "scores": [
+    {"subject": "Science", "marks": 18, "maxMarks": 20, "grade": null, "remarks": "", "absent": false, "confidence": 0.9},
+    {"subject": "Hindi", "marks": null, "maxMarks": 20, "grade": null, "remarks": "AB", "absent": true, "confidence": 0.8},
+    {"subject": "", "marks": 5, "maxMarks": 20, "absent": false, "confidence": 0.5}
+  ]
+}

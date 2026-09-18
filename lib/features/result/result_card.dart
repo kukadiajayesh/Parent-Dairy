@@ -6,6 +6,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/app_icons.dart';
 import '../../core/widgets/chips.dart';
 import '../../core/widgets/layout.dart';
+import '../../core/widgets/states.dart';
 import '../../core/widgets/stroke_icon.dart';
 import '../../data/models.dart';
 import '../performance/insight_widgets.dart';
@@ -26,9 +27,11 @@ class ResultCard extends StatelessWidget {
     final overall = result.overallPercent;
     final n = result.gradedSubjectCount;
 
-    return AppCard(
+    // An unconfirmed scan is drawn dotted: on the list, but not yet counted.
+    final card = AppCard(
       radius: 16,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      borderColor: result.needsReview ? Colors.transparent : null,
       onTap:
           onTap ??
           () => root.pushNamed(Routes.resultDetail, arguments: result.id),
@@ -93,6 +96,14 @@ class ResultCard extends StatelessWidget {
           StrokeIcon(AppIcons.forward, size: 16, color: k.tx5),
         ],
       ),
+    );
+    if (!result.needsReview) return card;
+    return Container(
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: DashedBorder(color: k.warn),
+      ),
+      child: card,
     );
   }
 }

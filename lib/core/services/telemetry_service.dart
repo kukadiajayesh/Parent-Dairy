@@ -116,6 +116,17 @@ abstract final class Telemetry {
   static Future<void> uploadFailed(String reason) =>
       _event('upload_failed', {'reason': reason});
 
+  // ── AI (prompt 02) — feature and model names only, never key, prompt or
+  // reply content, never token *contents*.
+  static Future<void> aiRequested(String feature, String model) =>
+      _event('ai_requested', {'feature': feature, 'model': model});
+
+  static Future<void> aiSucceeded(String feature, int tokens) =>
+      _event('ai_succeeded', {'feature': feature, 'tokens': tokens});
+
+  static Future<void> aiFailed(String feature, String kind) =>
+      _event('ai_failed', {'feature': feature, 'kind': kind});
+
   static Future<void> signIn() => _event('login', {'method': 'google'});
 
   static Future<void> signOut() => _event('sign_out');

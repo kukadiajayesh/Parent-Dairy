@@ -2,6 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../core/services/image_service.dart';
 import '../data/models.dart';
+import '../features/ai/ai_consent_page.dart';
+import '../features/ai/ai_settings_page.dart';
+import '../features/ai/answer_key_page.dart';
+import '../features/ai/focus_plan_page.dart';
+import '../features/ai/generate_paper_page.dart';
+import '../features/ai/generate_progress_page.dart';
+import '../features/ai/grade_paper_page.dart';
+import '../features/ai/paper_preview_page.dart';
+import '../features/ai/scan_paper_page.dart';
+import '../features/ai/scan_result_page.dart';
 import '../features/auth/login_page.dart';
 import '../features/children/child_setup_page.dart';
 import '../features/classwork/add_classwork_page.dart';
@@ -46,6 +56,18 @@ abstract final class Routes {
   static const viewer = '/viewer';
   static const addSubject = '/add-subject';
   static const addYear = '/add-year';
+
+  // AI (prompt 02) — every one behind kAiEnabled at its entry point.
+  static const aiSettings = '/ai/settings';
+  static const aiConsent = '/ai/consent';
+  static const aiGenerate = '/ai/generate';
+  static const aiGenerateProgress = '/ai/generate/progress';
+  static const paperPreview = '/ai/paper-preview';
+  static const scanPaper = '/ai/scan-paper';
+  static const answerKey = '/ai/answer-key';
+  static const gradePaper = '/ai/grade-paper';
+  static const scanResult = '/ai/scan-result';
+  static const focusPlan = '/ai/focus-plan';
 
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     Route<T> page<T>(Widget child) =>
@@ -98,6 +120,40 @@ abstract final class Routes {
         return page(const AddSubjectPage());
       case addYear:
         return page(const AddYearPage());
+      case aiSettings:
+        return page(const AiSettingsPage());
+      case aiConsent:
+        return page<bool>(
+          AiConsentPage(readOnly: settings.arguments == true),
+        );
+      case aiGenerate:
+        return page(
+          GeneratePaperPage(args: settings.arguments as GenerateArgs?),
+        );
+      case aiGenerateProgress:
+        return page(
+          GenerateProgressPage(
+            args: settings.arguments! as GenerateProgressArgs,
+          ),
+        );
+      case paperPreview:
+        return page(
+          PaperPreviewPage(args: settings.arguments! as PaperPreviewArgs),
+        );
+      case scanPaper:
+        return page(const ScanPaperPage());
+      case answerKey:
+        return page(AnswerKeyPage(recordId: settings.arguments! as String));
+      case gradePaper:
+        return page(GradePaperPage(recordId: settings.arguments! as String));
+      case scanResult:
+        return page(
+          ScanResultPage(
+            initialFiles: settings.arguments as List<PickedAttachment>?,
+          ),
+        );
+      case focusPlan:
+        return page(const FocusPlanPage());
       default:
         return null;
     }

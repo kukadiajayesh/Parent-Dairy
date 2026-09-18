@@ -230,6 +230,50 @@ abstract final class ImageService {
     }
   }
 
+  /// A copy sized for a model, not a parent: 1600px long edge, quality 75,
+  /// always JPEG. The re-encode also drops EXIF (location, device), which
+  /// is the one piece of metadata that must never leave the phone. Never
+  /// sends the Storage original.
+  static Future<String> compressForAi(String path) async {
+    const aiDimension = 1600;
+    const aiQuality = 75;
+    try {
+      final target = await _tempPath('ai_${path.split('/').last}', suffix: 'ai');
+      final out = await FlutterImageCompress.compressAndGetFile(
+        path,
+        target,
+        quality: aiQuality,
+        minWidth: aiDimension,
+        minHeight: aiDimension,
+        format: CompressFormat.jpeg,
+        keepExif: false,
+      );
+      return out?.path ?? path;
+    } catch (_) {
+      return path;
+    }
+  }
+
+  /// Writes bytes the app produced itself (a rendered PDF) into the staging
+  /// directory so they can be attached like any picked file.
+  static Future<PickedAttachment> stageBytes(
+    List<int> bytes,
+    String name, {
+    String mimeType = 'application/pdf',
+  }) async {
+    final dir = await _stagingDir();
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final file = File('${dir.path}/${stamp}_$name');
+    await file.writeAsBytes(bytes, flush: true);
+    return PickedAttachment(
+      path: file.path,
+      name: name,
+      bytes: bytes.length,
+      isPdf: mimeType == 'application/pdf',
+      mimeType: mimeType,
+    );
+  }
+
   /// Entry point for the share sheet, which hands over a path the app did not
   /// pick. Same validation and compression as every other source.
   static Future<PickedAttachment?> compressShared(String path, String name) =>

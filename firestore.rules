@@ -74,6 +74,19 @@ service cloud.firestore {
           allow delete: if false;
         }
 
+        // Structured AI output (prompt 02): a generated paper's questions,
+        // a scanned paper, an answer key, a grading. The payload is the
+        // artefact's own JSON; only its envelope is checked here.
+        match /generated/{generatedId} {
+          allow read: if isOwner(uid);
+
+          allow create, update: if isOwner(uid)
+                                && isValidGenerated()
+                                && request.resource.data.childId == childId;
+
+          allow delete: if false;
+        }
+
         function isValidRecord() {
           let data = request.resource.data;
           return isNonEmptyString(data.title, 200)
@@ -92,11 +105,22 @@ service cloud.firestore {
                  && (data.type != 'exam' || isValidExam(data));
         }
 
-        // Mirrors RecordRepository._validate for exams: the type and the
-        // timetable are what make an exam record renderable.
+        // Mirrors RecordRepository._validate for exams: the type plus either
+        // a timetable (hand-entered exam) or at least one page (a scanned
+        // paper, prompt 02) is what makes an exam record renderable.
         function isValidExam(data) {
           return isNonEmptyString(data.examType, 60)
-                 && data.examTimetable is map;
+                 && (data.examTimetable is map || data.attachments.size() > 0);
+        }
+
+        function isValidGenerated() {
+          let data = request.resource.data;
+          return isNonEmptyString(data.title, 200)
+                 && data.kind in ['paper', 'scannedPaper', 'answerKey', 'gradedPaper']
+                 && data.payload is map
+                 && data.isDeleted is bool
+                 && data.subject is string
+                 && data.subject.size() <= 60;
         }
 
         // Mirrors ResultRepository._validate. Rows are validated as a list
