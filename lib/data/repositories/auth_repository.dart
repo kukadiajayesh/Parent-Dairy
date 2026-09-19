@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../core/errors/app_failure.dart';
@@ -38,8 +39,12 @@ class AuthRepository {
   /// Must run once before [signInWithGoogle]. On Android the client id comes
   /// from the `default_web_client_id` resource that the google-services Gradle
   /// plugin generates, so nothing is hardcoded here.
+  ///
+  /// Skipped on web: `google_sign_in_web` refuses `authenticate()` outright
+  /// (it only supports its own `renderButton` widget), so web signs in
+  /// through Firebase's own popup flow instead — see [signInWithGoogle].
   Future<void> ensureInitialized() async {
-    if (_initialized) return;
+    if (_initialized || kIsWeb) return;
     try {
       await _google.initialize();
       _initialized = true;
@@ -49,6 +54,28 @@ class AuthRepository {
   }
 
   Future<UserCredential> signInWithGoogle() async {
+    if (kIsWeb) {
+      try {
+        final credential = await _auth.signInWithPopup(GoogleAuthProvider());
+        await _ensureUserDocument(credential.user!);
+        await Telemetry.setUser(credential.user!.uid);
+        unawaited(Telemetry.signIn());
+        return credential;
+      } on FirebaseAuthException catch (error) {
+        if (error.code == 'popup-closed-by-user' ||
+            error.code == 'cancelled-popup-request') {
+          throw AppFailure.cancelled;
+        }
+        throw AppFailure(
+          FailureKind.unknown,
+          'Could not sign in with Google. Please try again.',
+          cause: error,
+        );
+      } catch (error) {
+        throw AppFailure.from(error);
+      }
+    }
+
     await ensureInitialized();
     try {
       final account = await _google.authenticate();
@@ -82,9 +109,11 @@ class AuthRepository {
     }
   }
 
-  /// Restores a session silently at launch when the platform can.
+  /// Restores a session silently at launch when the platform can. On web,
+  /// `FirebaseAuth`'s own persisted session already covers this — there is no
+  /// separate Google-side session to restore.
   Future<void> attemptSilentSignIn() async {
-    if (isSignedIn) return;
+    if (isSignedIn || kIsWeb) return;
     try {
       await ensureInitialized();
       await _google.attemptLightweightAuthentication();

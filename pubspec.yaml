@@ -76,9 +76,24 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   fake_cloud_firestore: ^4.2.0
   firebase_auth_mocks: ^0.15.2
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
+
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  adaptive_icon_background: "#3F4C8C"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  ios: true
+  macos:
+    generate: true
+  web:
+    generate: true
+  windows:
+    generate: true
+    icon_size: 256
 
 # The following section is specific to Flutter packages.
 flutter:

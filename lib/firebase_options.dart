@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -28,10 +25,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.iOS:
         return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for windows - '
@@ -63,6 +57,26 @@ class DefaultFirebaseOptions {
     projectId: 'parent-academic-diary',
     storageBucket: 'parent-academic-diary.firebasestorage.app',
     androidClientId: '438761220028-f298fdereol3mqbm4on134folgmc3d18.apps.googleusercontent.com',
+    iosClientId: '438761220028-9n6n0pt0bi83g52cnsvc0lv937unmsfm.apps.googleusercontent.com',
+    iosBundleId: 'com.parent.academic.diary',
+  );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyDycYeAESEXk2F2cNFG6aM2_5sv8jzxzm0',
+    appId: '1:438761220028:web:505fb81b3418c618f36db9',
+    messagingSenderId: '438761220028',
+    projectId: 'parent-academic-diary',
+    authDomain: 'parent-academic-diary.firebaseapp.com',
+    storageBucket: 'parent-academic-diary.firebasestorage.app',
+  );
+
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyBZA-V4LvrM-jLvlVWRPRsZFmdZI3BJEYg',
+    appId: '1:438761220028:ios:8385213d22a4ad57f36db9',
+    messagingSenderId: '438761220028',
+    projectId: 'parent-academic-diary',
+    storageBucket: 'parent-academic-diary.firebasestorage.app',
+    androidClientId: '438761220028-6uujc6gc99f3lknm4v7safij98vkoeui.apps.googleusercontent.com',
     iosClientId: '438761220028-9n6n0pt0bi83g52cnsvc0lv937unmsfm.apps.googleusercontent.com',
     iosBundleId: 'com.parent.academic.diary',
   );

@@ -19,8 +19,12 @@ abstract final class Telemetry {
 
   static Future<void> init() async {
     _analytics = FirebaseAnalytics.instance;
-    _crashlytics = FirebaseCrashlytics.instance;
-    await _crashlytics?.setCrashlyticsCollectionEnabled(_enabled);
+    // Crashlytics has no web SDK — FirebaseCrashlytics.instance asserts on a
+    // missing plugin constant there, so it is skipped entirely on web.
+    if (!kIsWeb) {
+      _crashlytics = FirebaseCrashlytics.instance;
+      await _crashlytics?.setCrashlyticsCollectionEnabled(_enabled);
+    }
     await _analytics?.setAnalyticsCollectionEnabled(_enabled);
 
     FlutterError.onError = (details) {
